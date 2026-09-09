@@ -1,0 +1,10 @@
+/* Styles for this experiment's apparatus only. Everything general
+   — buttons, tables, cards, the step rail, print rules — is already
+   in shared/css/base.css. */
+
+.apparatus {
+  background: var(--plate);
+  border-radius: 3px;
+  min-height: 160px;
+  margin-bottom: 16px;
+}
