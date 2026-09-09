@@ -1,161 +1,185 @@
 /**
- * AlO band-spectrum lab — submission endpoint.
+ * Virtual laboratory — one submission endpoint for every experiment.
+ *
+ * Each experiment posts the same envelope (see shared/js/lab-submit.js):
+ *
+ *   { experiment: {id, title, number, programme, course, subject},
+ *     student:    {name, register, batch, date, partner},
+ *     summary:    { "column name": value, … },
+ *     data:       { … kept as JSON … },
+ *     report:     [ {type:"heading"|"paragraph"|"table", …}, … ] }
+ *
+ * The script files each submission on a tab named after the experiment,
+ * building that tab's columns from the keys of "summary" the first time
+ * it sees them, and adding any new key as a new column later. So a new
+ * experiment needs no changes here at all.
  *
  * Deploy as: Web app, execute as "Me", access "Anyone".
- * Copy the /exec URL into js/config.js on the GitHub Pages site.
- *
- * The page posts plain text so the browser sends no CORS preflight;
- * it does not read the reply, so nothing here needs CORS headers.
+ * Put the /exec URL into shared/js/config.js once, for the whole site.
  */
 
 var SETTINGS = {
-  SHEET_NAME: 'Submissions',
-  CREATE_DOC: true,              // write a formatted record into Drive
-  DOC_FOLDER: 'AlO lab reports', // created on first use
-  NOTIFY: ''                     // instructor email, or '' for no mail
+  MASTER_SHEET: 'All submissions',
+  CREATE_DOC: true,                    // a formatted record in Drive per submission
+  DOC_FOLDER: 'Virtual lab reports',   // created on first use
+  NOTIFY: ''                           // instructor email, or '' for no mail
 };
 
-/* literature values, used for the error columns */
-var LIT = { we_u: 870.0, wexe_u: 3.50, we_l: 979.23, wexe_l: 6.97 };
+var BASE_HEADERS = ['Timestamp', 'Name', 'Register', 'Batch', 'Exp. date', 'Partner'];
+var TAIL_HEADERS = ['Report', 'Raw JSON'];
 
-var HEADERS = ['Timestamp', 'Name', 'Register', 'Batch', 'Exp. date', 'Partner',
-  'lambda0 (A)', 'C (A cm)', 'd0 (cm)', 'Hg lines', 'Bands',
-  "we' (cm-1)", "wexe' (cm-1)", "xe'", 'we" (cm-1)', 'wexe" (cm-1)', 'xe"',
-  "err we' (%)", 'err we" (%)', 'Report', 'Raw JSON'];
+/* ---------- endpoints ---------- */
 
 function doPost(e) {
   try {
-    var data = JSON.parse(e.postData.contents);
-    var row = buildRow(data);
-    if (SETTINGS.CREATE_DOC) row[19] = createDoc(data);
-    sheet().appendRow(row);
-    if (SETTINGS.NOTIFY) notify(data, row[19]);
-    return json({ ok: true });
+    var d = JSON.parse(e.postData.contents);
+    var exp = d.experiment || {};
+    var stu = d.student || {};
+    var url = SETTINGS.CREATE_DOC ? createDoc(d) : '';
+
+    record(sheetFor(exp), d, url);
+    logMaster(d, url);
+    if (SETTINGS.NOTIFY) notify(d, url);
+
+    return json({ ok: true, experiment: exp.id || '' });
   } catch (err) {
     return json({ ok: false, error: String(err) });
   }
 }
 
 function doGet() {
-  var n = Math.max(0, sheet().getLastRow() - 1);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var rows = ss.getSheets().map(function (sh) {
+    return '<li>' + sh.getName() + ' — ' + Math.max(0, sh.getLastRow() - 1) + '</li>';
+  }).join('');
   return HtmlService.createHtmlOutput(
-    '<p style="font-family:system-ui">AlO lab endpoint is live. ' + n + ' submission(s) recorded.</p>');
+    '<div style="font-family:system-ui;padding:12px">' +
+    '<p>Virtual laboratory endpoint is live.</p><ul>' + rows + '</ul></div>');
 }
 
-/* ---------- sheet ---------- */
+/* ---------- one tab per experiment ---------- */
 
-function sheet() {
+function tabName(exp) {
+  var n = (exp.id || 'unknown').replace(/[\[\]\*\/\\\?:]/g, '-');
+  return n.substring(0, 90);
+}
+
+function sheetFor(exp) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sh = ss.getSheetByName(SETTINGS.SHEET_NAME);
+  var name = tabName(exp);
+  var sh = ss.getSheetByName(name);
   if (!sh) {
-    sh = ss.insertSheet(SETTINGS.SHEET_NAME);
-    sh.appendRow(HEADERS);
+    sh = ss.insertSheet(name);
+    sh.appendRow(BASE_HEADERS.concat(TAIL_HEADERS));
     sh.setFrozenRows(1);
-    sh.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold');
+    sh.getRange(1, 1, 1, sh.getLastColumn()).setFontWeight('bold');
   }
   return sh;
 }
 
-function buildRow(d) {
-  var s = d.student || {}, h = d.hartmann || {}, r = d.results || {};
-  var u = r.upper || {}, l = r.lower || {};
-  function err(got, lit) { return isFinite(got) ? round(Math.abs(got - lit) / lit * 100, 2) : ''; }
-  return [
-    new Date(), s.name || '', s.register || '', s.batch || '', s.date || '', s.partner || '',
-    round(h.lam0, 2), round(h.C, 1), round(h.d0, 4),
-    (d.mercury || []).length, (d.bands || []).length,
-    u.we || '', u.wexe || '', u.xe || '', l.we || '', l.wexe || '', l.xe || '',
-    err(u.we, LIT.we_u), err(l.we, LIT.we_l),
-    '', JSON.stringify(d)
-  ];
+function headers(sh) {
+  return sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0];
 }
 
-function round(x, n) {
-  return (typeof x === 'number' && isFinite(x)) ? Math.round(x * Math.pow(10, n)) / Math.pow(10, n) : '';
+/** Add a column for any summary key the tab has not seen before. */
+function ensureColumns(sh, keys) {
+  var head = headers(sh);
+  var missing = keys.filter(function (k) { return head.indexOf(k) < 0; });
+  if (!missing.length) return head;
+  sh.getRange(1, head.length + 1, 1, missing.length).setValues([missing]).setFontWeight('bold');
+  return head.concat(missing);
 }
 
-/* ---------- per-student document ---------- */
+function record(sh, d, docUrl) {
+  var stu = d.student || {}, sum = d.summary || {};
+  var head = ensureColumns(sh, Object.keys(sum));
+  var byName = {
+    'Timestamp': new Date(),
+    'Name': stu.name || '',
+    'Register': stu.register || '',
+    'Batch': stu.batch || '',
+    'Exp. date': stu.date || '',
+    'Partner': stu.partner || '',
+    'Report': docUrl || '',
+    'Raw JSON': JSON.stringify(d)
+  };
+  Object.keys(sum).forEach(function (k) { byName[k] = sum[k]; });
+  sh.appendRow(head.map(function (h) { return byName[h] === undefined ? '' : byName[h]; }));
+}
+
+function logMaster(d, docUrl) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SETTINGS.MASTER_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(SETTINGS.MASTER_SHEET, 0);
+    sh.appendRow(['Timestamp', 'Experiment', 'Title', 'Course', 'Programme', 'Name', 'Register', 'Batch', 'Report']);
+    sh.setFrozenRows(1);
+    sh.getRange(1, 1, 1, 9).setFontWeight('bold');
+  }
+  var e = d.experiment || {}, s = d.student || {};
+  sh.appendRow([new Date(), e.id || '', e.title || '', e.course || '', e.programme || '',
+    s.name || '', s.register || '', s.batch || '', docUrl || '']);
+}
+
+/* ---------- the student's document ---------- */
 
 function createDoc(d) {
-  var s = d.student || {}, r = d.results || {};
-  var name = 'AlO band spectrum — ' + (s.register || 'x') + ' ' + (s.name || '');
-  var doc = DocumentApp.create(name);
+  var e = d.experiment || {}, s = d.student || {};
+  var doc = DocumentApp.create((e.id || 'experiment') + ' — ' + (s.register || 'x') + ' ' + (s.name || ''));
   var b = doc.getBody();
 
-  b.appendParagraph('Vibrational constants of AlO from its electronic band spectrum')
-    .setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  b.appendParagraph(e.title || 'Laboratory record').setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  b.appendParagraph([e.course, e.number ? 'experiment ' + e.number : '', (d.site || {}).department]
+    .filter(String).join('  ·  '));
   b.appendParagraph([s.name, s.register, s.batch, s.date].filter(String).join('  ·  '));
 
-  b.appendParagraph('Calibration').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-  var h = d.hartmann || {};
-  b.appendParagraph('Hartmann constants: lambda0 = ' + round(h.lam0, 2) + ' A, C = ' +
-    round(h.C, 1) + ' A cm, d0 = ' + round(h.d0, 4) + ' cm');
-  var hgRows = [['Standard lambda (A)', 'Comparator reading (cm)']];
-  (d.mercury || []).forEach(function (m) { hgRows.push([String(m.lambda), String(m.d)]); });
-  style(b.appendTable(hgRows));
-
-  b.appendParagraph('Band heads').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-  var bandRows = [["v'", 'v"', 'd (cm)', 'lambda (A)', 'nu (cm-1)']];
-  (d.bands || []).forEach(function (x) {
-    bandRows.push([String(x.vu), String(x.vl), String(x.d), String(x.lambda), String(x.nu)]);
+  (d.report || []).forEach(function (blk) {
+    if (blk.type === 'heading') {
+      b.appendParagraph(blk.text).setHeading(blk.level === 3
+        ? DocumentApp.ParagraphHeading.HEADING3 : DocumentApp.ParagraphHeading.HEADING2);
+    } else if (blk.type === 'paragraph') {
+      b.appendParagraph(blk.text || '');
+    } else if (blk.type === 'table' && blk.rows && blk.rows.length) {
+      if (blk.caption) b.appendParagraph(blk.caption).setItalic(true);
+      var rows = blk.rows.map(function (r) { return r.map(function (c) { return String(c); }); });
+      var t = b.appendTable(rows);
+      t.setBorderWidth(0.5);
+      var head = t.getRow(0);
+      for (var i = 0; i < head.getNumCells(); i++) head.getCell(i).setBackgroundColor('#eef1ec');
+    }
   });
-  style(b.appendTable(bandRows));
 
-  if (r.upper && r.lower) {
-    b.appendParagraph('Result').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-    style(b.appendTable([
-      ['Quantity', 'Measured', 'Literature'],
-      ["we' (cm-1)", String(r.upper.we), String(LIT.we_u)],
-      ["wexe' (cm-1)", String(r.upper.wexe), String(LIT.wexe_u)],
-      ["xe'", String(r.upper.xe), String(round(LIT.wexe_u / LIT.we_u, 5))],
-      ['we" (cm-1)', String(r.lower.we), String(LIT.we_l)],
-      ['wexe" (cm-1)', String(r.lower.wexe), String(LIT.wexe_l)],
-      ['xe"', String(r.lower.xe), String(round(LIT.wexe_l / LIT.we_l, 5))]
-    ]));
-  }
-
-  var a = d.answers || {};
-  var qs = ['What do you mean by an electronic band spectrum?',
-    'What do you mean by the vibrational constants of AlO?',
-    'Do you expect a band spectrum from a homonuclear diatomic molecule?',
-    'Explain sequences and progressions.'];
-  b.appendParagraph('Questions').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-  ['q1', 'q2', 'q3', 'q4'].forEach(function (k, i) {
-    b.appendParagraph((i + 1) + '. ' + qs[i]).setHeading(DocumentApp.ParagraphHeading.HEADING3);
-    b.appendParagraph(a[k] || '—');
-  });
-  if (a.errors) {
-    b.appendParagraph('Sources of error').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-    b.appendParagraph(a.errors);
+  if (d.summary && Object.keys(d.summary).length) {
+    b.appendParagraph('Summary').setHeading(DocumentApp.ParagraphHeading.HEADING2);
+    var rows2 = [['Quantity', 'Value']];
+    Object.keys(d.summary).forEach(function (k) { rows2.push([k, String(d.summary[k])]); });
+    b.appendTable(rows2).setBorderWidth(0.5);
   }
 
   doc.saveAndClose();
   var file = DriveApp.getFileById(doc.getId());
-  folder().addFile(file);
+  folder(e).addFile(file);
   DriveApp.getRootFolder().removeFile(file);
   return doc.getUrl();
 }
 
-function style(table) {
-  table.setBorderWidth(0.5);
-  var head = table.getRow(0);
-  for (var i = 0; i < head.getNumCells(); i++) head.getCell(i).setBackgroundColor('#eef1ec');
-  return table;
+/** Reports go into "Virtual lab reports / <experiment id>". */
+function folder(exp) {
+  var root = byName(DriveApp, SETTINGS.DOC_FOLDER);
+  return byName(root, tabName(exp || {}));
 }
-
-function folder() {
-  var it = DriveApp.getFoldersByName(SETTINGS.DOC_FOLDER);
-  return it.hasNext() ? it.next() : DriveApp.createFolder(SETTINGS.DOC_FOLDER);
+function byName(parent, name) {
+  var it = parent.getFoldersByName(name);
+  return it.hasNext() ? it.next() : parent.createFolder(name);
 }
 
 function notify(d, url) {
-  var s = d.student || {};
+  var e = d.experiment || {}, s = d.student || {};
   MailApp.sendEmail(SETTINGS.NOTIFY,
-    'AlO lab submission — ' + (s.register || '') + ' ' + (s.name || ''),
-    'A new record has been submitted.\n\n' +
-    'Name: ' + (s.name || '') + '\nRegister: ' + (s.register || '') + '\nBatch: ' + (s.batch || '') +
-    '\nBands measured: ' + (d.bands || []).length +
-    (url ? '\n\nReport: ' + url : ''));
+    'Lab submission — ' + (e.id || '') + ' — ' + (s.register || '') + ' ' + (s.name || ''),
+    [e.title || '', '', 'Name: ' + (s.name || ''), 'Register: ' + (s.register || ''),
+      'Batch: ' + (s.batch || ''), 'Course: ' + (e.course || ''),
+      url ? '' : null, url ? 'Report: ' + url : null].filter(function (x) { return x !== null; }).join('\n'));
 }
 
 function json(obj) {
@@ -163,8 +187,10 @@ function json(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-/* Run once from the editor to create the sheet and grant permissions. */
+/** Run once from the editor to create the master tab and grant permissions. */
 function setUp() {
-  sheet();
+  logMaster({ experiment: { id: 'setup', title: 'Setup check' }, student: {} }, '');
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SETTINGS.MASTER_SHEET);
+  sh.deleteRow(sh.getLastRow());
   Logger.log('Ready. Deploy → New deployment → Web app → execute as me, access anyone.');
 }
