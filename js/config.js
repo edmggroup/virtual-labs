@@ -13,5 +13,5 @@ window.LAB_CONFIG = {
   /* Printed on the report header. */
   DEPARTMENT: "Department of Physics and Electronics",
   INSTITUTION: "CHRIST (Deemed to be University), Bengaluru",
-  COURSE: "General Physics Laboratory V — Experiment 8"
+  COURSE: "General Physics Laboratory III — Experiment 8"
 };
