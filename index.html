@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AlO band spectrum — virtual spectroscopy bench</title>
+<meta name="description" content="Measure the AlO B²Σ⁺–X²Σ⁺ band heads on a simulated photographic plate and work out the vibrational constants of both electronic states.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&family=Spectral:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="masthead">
+  <h1>AlO band spectrum</h1>
+  <span class="sub">Vibrational constants of aluminium oxide from the B²Σ⁺ → X²Σ⁺ system</span>
+  <span class="who" id="whoami"></span>
+</header>
+
+<div class="shell">
+  <nav class="rail" id="rail" aria-label="Experiment steps"></nav>
+
+  <main class="work">
+
+    <!-- ---------- plate viewer ---------- -->
+    <section class="viewer hidden" id="viewer" aria-label="Photographic plate">
+      <div class="stack">
+        <canvas id="plateCanvas" aria-label="Simulated photographic plate"></canvas>
+        <canvas id="traceCanvas" aria-label="Densitometer trace"></canvas>
+        <canvas id="overlayCanvas" aria-hidden="true"></canvas>
+      </div>
+      <div class="strip">
+        <label class="toggle">Field
+          <select id="zoom">
+            <option value="all">whole plate</option>
+            <option value="4">4 cm</option>
+            <option value="1.5">1.5 cm</option>
+            <option value="0.5">0.5 cm</option>
+          </select>
+        </label>
+        <label class="toggle"><input type="checkbox" id="labels" checked> band identities</label>
+        <label class="toggle"><input type="checkbox" id="snap" checked> wire snaps to an edge</label>
+        <label class="toggle"><input type="checkbox" id="colour" checked> colour rendering</label>
+        <span class="tag">click or drag on the plate to move the crosswire</span>
+      </div>
+    </section>
+
+    <!-- ---------- comparator ---------- -->
+    <section class="comparator hidden" id="comparator" aria-label="Travelling comparator">
+      <div class="drive">
+        <input type="range" id="drive" min="2" max="18" step="0.001" value="10" aria-label="Comparator drive">
+        <div class="nudge">
+          <button data-nudge="-0.1">−0.100</button>
+          <button data-nudge="-0.01">−0.010</button>
+          <button data-nudge="-0.001">−0.001</button>
+          <button data-nudge="0.001">+0.001</button>
+          <button data-nudge="0.01">+0.010</button>
+          <button data-nudge="0.1">+0.100</button>
+        </div>
+        <div class="progress" id="nearMsg"></div>
+        <p style="font-size:.82rem;color:var(--ink-2);margin:8px 0 0">
+          Arrow keys move the wire by one least count, Shift with an arrow by ten.
+          Set the wire on the sharp violet edge of a band, not on its brightest part.
+        </p>
+      </div>
+      <div class="readout">
+        <div class="big" id="readBig">—</div>
+        <div class="parts" id="readParts"></div>
+        <canvas id="magCanvas" aria-label="Magnified view at the crosswire"></canvas>
+      </div>
+    </section>
+
+    <div id="steps"></div>
+  </main>
+</div>
+
+<div id="toast" class="note" role="status" style="display:none;position:fixed;bottom:16px;right:16px;z-index:30;max-width:360px;box-shadow:0 6px 18px rgba(20,33,42,.18)"></div>
+
+<script src="js/config.js"></script>
+<script src="js/physics.js"></script>
+<script src="js/spectrum.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/report.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
