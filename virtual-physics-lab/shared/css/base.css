@@ -22,6 +22,10 @@
   --amber: #9a6a12;
   --ok: #2f6b3c;
   --shadow: 0 1px 0 rgba(20, 33, 42, .06);
+  /* the page scales with the viewport instead of sitting in a fixed column */
+  --gutter: clamp(14px, 2.6vw, 40px);
+  --rail-w: clamp(196px, 15vw, 268px);
+  --measure: 74ch;
   --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
   --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --serif: "Spectral", Georgia, "Times New Roman", serif;
@@ -33,19 +37,20 @@ html { scroll-behavior: smooth; }
 
 body {
   margin: 0;
+  min-height: 100%;
   background: var(--bench);
   color: var(--ink);
   font-family: var(--sans);
-  font-size: 15px;
+  font-size: clamp(14.5px, 0.45vw + 13.4px, 17px);
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
 
 h1, h2, h3, h4 { font-family: var(--serif); font-weight: 600; letter-spacing: -.01em; margin: 0 0 .4em; }
-h1 { font-size: 1.9rem; line-height: 1.15; }
-h2 { font-size: 1.45rem; }
-h3 { font-size: 1.1rem; }
-p { margin: 0 0 .9em; max-width: 72ch; }
+h1 { font-size: clamp(1.5rem, 1.1rem + 1.4vw, 2.1rem); line-height: 1.15; }
+h2 { font-size: clamp(1.25rem, 1.05rem + 0.7vw, 1.55rem); }
+h3 { font-size: clamp(1rem, .95rem + 0.3vw, 1.15rem); }
+p { margin: 0 0 .9em; max-width: var(--measure); }
 a { color: var(--accent-ink); }
 small { color: var(--ink-2); }
 
@@ -54,7 +59,7 @@ small { color: var(--ink-2); }
 .masthead {
   border-bottom: 1px solid var(--rule);
   background: var(--panel);
-  padding: 14px 22px;
+  padding: 14px var(--gutter);
   display: flex;
   gap: 18px;
   align-items: baseline;
@@ -68,11 +73,17 @@ small { color: var(--ink-2); }
 
 /* ---------- shell ---------- */
 
-.shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 0; align-items: start; }
+.shell {
+  display: grid;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  gap: 0;
+  align-items: start;
+  min-height: calc(100vh - 58px);
+}
 
 .rail {
   position: sticky; top: 0; align-self: start;
-  height: 100vh; overflow-y: auto;
+  height: 100vh; max-height: 100dvh; overflow-y: auto; overscroll-behavior: contain;
   border-right: 1px solid var(--rule);
   background: var(--panel-2);
   padding: 18px 0 40px;
@@ -91,7 +102,36 @@ small { color: var(--ink-2); }
 .rail button.done .n::after { content: "✓"; color: var(--ok); }
 .rail button.done .n { color: transparent; }
 
-.work { padding: 26px 34px 90px; min-width: 0; max-width: 1180px; }
+/* The working area grows with the window: prose keeps its measure, tables,
+   instruments and graphs take the room that is going. */
+.work {
+  padding: clamp(18px, 2vw, 34px) var(--gutter) 90px;
+  min-width: 0;
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+/* Past about 1500px a single column of tables looks stranded, so cards and
+   charts pair up instead of stretching. */
+@media (min-width: 1500px) {
+  .grid2 { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+  .work { padding-left: clamp(24px, 3vw, 64px); padding-right: clamp(24px, 3vw, 64px); }
+}
+
+/* ---------- the student's own working ---------- */
+
+input.wk {
+  font-family: var(--mono); font-size: .84rem;
+  width: 7.4em; padding: 3px 6px; text-align: right;
+  border: 1px solid var(--rule); border-radius: 2px; background: #fff; color: var(--ink);
+}
+input.wk:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.wkrow { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center; margin-bottom: 12px; }
+.wkrow label { font-size: .88rem; color: var(--ink-2); display: flex; gap: 6px; align-items: center; }
+.mark { display: inline-block; width: 1em; font-family: var(--mono); font-size: .85rem; color: var(--ink-3); }
+.mark.ok { color: var(--ok); }
+.mark.off { color: var(--crosswire); font-weight: 600; }
 
 /* ---------- action bars ---------- */
 
@@ -116,7 +156,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 
 /* ---------- panels, tables ---------- */
 
-.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 3px; padding: 16px 18px; margin-bottom: 16px; }
+.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 3px; padding: clamp(13px, 1.4vw, 20px) clamp(14px, 1.6vw, 22px); margin-bottom: 16px; }
 .card > :last-child { margin-bottom: 0; }
 
 table { border-collapse: collapse; width: 100%; font-size: .86rem; background: #fff; }
@@ -126,7 +166,8 @@ th:first-child, td:first-child { text-align: left; }
 td.num, th.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 tbody tr.pending td { color: var(--ink-3); }
 tbody tr.hit { background: #e7f3ef; }
-.tablewrap { overflow-x: auto; margin-bottom: 12px; }
+.tablewrap { overflow-x: auto; margin-bottom: 12px; -webkit-overflow-scrolling: touch; }
+.tablewrap table { min-width: max-content; width: 100%; }
 caption { caption-side: top; text-align: left; font-family: var(--serif); font-size: .95rem; padding-bottom: 6px; }
 
 .des td.diag { background: #eef6f3; }
@@ -134,7 +175,7 @@ caption { caption-side: top; text-align: left; font-family: var(--serif); font-s
 
 /* ---------- misc ---------- */
 
-.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 16px; }
 .field { display: block; margin-bottom: 10px; }
 .field span { display: block; font-size: .8rem; color: var(--ink-2); margin-bottom: 3px; }
 .field input, .field textarea, .field select {
@@ -176,13 +217,52 @@ caption { caption-side: top; text-align: left; font-family: var(--serif); font-s
 .report h2 { border-bottom: 1px solid var(--rule); padding-bottom: 6px; }
 .report img { max-width: 100%; border: 1px solid var(--rule-2); }
 
+/* ---------- phones and tablets ---------- */
+
+@supports (padding: env(safe-area-inset-left)) {
+  .masthead, .portal-head, .filters, .work, .catalog, .portal-foot {
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+  body { padding-bottom: env(safe-area-inset-bottom); }
+}
+
 @media (max-width: 900px) {
-  .shell { grid-template-columns: 1fr; }
-  .rail { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--rule); display: flex; overflow-x: auto; padding: 8px; gap: 4px; }
+  .shell { grid-template-columns: 1fr; min-height: 0; }
+  .rail {
+    position: sticky; top: 0; z-index: 6;
+    height: auto; border-right: 0; border-bottom: 1px solid var(--rule);
+    display: flex; overflow-x: auto; padding: 6px 8px; gap: 4px;
+    scroll-snap-type: x proximity;
+  }
   .rail .group { display: none; }
-  .rail button { width: auto; white-space: nowrap; border-left: 0; border-bottom: 3px solid transparent; }
+  .rail button {
+    width: auto; white-space: nowrap; border-left: 0;
+    border-bottom: 3px solid transparent; scroll-snap-align: center;
+  }
   .rail button[aria-current="true"] { border-left: 0; border-bottom-color: var(--accent); }
-  .work { padding: 18px 14px 70px; }
+  .work { padding: 16px var(--gutter) 72px; max-width: none; }
+
+  /* touch targets and fields that fit a phone */
+  button.primary, button.ghost, .nudge button { min-height: 42px; padding-left: 14px; padding-right: 14px; }
+  .rail button { min-height: 42px; }
+  input.wk { width: 6.4em; font-size: 16px; }         /* 16px stops iOS zooming on focus */
+  .field input, .field textarea, .field select, .filters input, .filters select { font-size: 16px; }
+  table { font-size: .84rem; }
+  th, td { padding: 7px 8px; }
+  .result-strip { gap: 16px 20px; }
+  .kv { grid-template-columns: 1fr; gap: 0; }
+  .kv dd { margin-bottom: 8px; }
+  .recordbar { gap: 8px 10px; }
+  .steps-nav { flex-direction: column-reverse; gap: 8px; }
+  .steps-nav button { width: 100%; }
+}
+
+/* Landscape on a phone: the rail eats too much height, so it thins out */
+@media (max-height: 460px) and (orientation: landscape) {
+  .rail button { min-height: 34px; padding-top: 3px; padding-bottom: 3px; }
+  .masthead { padding-top: 8px; padding-bottom: 8px; }
+  .masthead .sub { display: none; }
 }
 
 @media print {

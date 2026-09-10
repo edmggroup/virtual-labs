@@ -1,0 +1,17 @@
+{
+  "name": "Virtual Physics Laboratory",
+  "short_name": "Physics Lab",
+  "description": "Simulated physics laboratory experiments, with the working done by hand and a PDF record at the end.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#e7ebe5",
+  "theme_color": "#0e6e6b",
+  "categories": ["education", "science"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

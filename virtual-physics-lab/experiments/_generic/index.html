@@ -3,10 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Experiment template — Virtual Physics Laboratory</title>
+<title>Experiment — Virtual Physics Laboratory</title>
 <meta name="theme-color" content="#0e6e6b">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="../../manifest.webmanifest">
 <link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
 <link rel="icon" href="../../icons/icon-192.png">
@@ -14,7 +13,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&family=Spectral:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../../shared/css/base.css">
-<link rel="stylesheet" href="css/experiment.css">
 </head>
 <body>
 
@@ -23,20 +21,18 @@
 <div class="shell">
   <nav class="rail" id="rail" aria-label="Experiment steps"></nav>
   <main class="work">
-    <!-- Apparatus goes here: a canvas, an SVG instrument, a form.
-         Everything below the apparatus is written by js/app.js. -->
-    <div id="steps"></div>
+    <div id="steps"><p class="progress">Loading the experiment…</p></div>
   </main>
 </div>
 
-<div id="toast" class="note" role="status" style="display:none;position:fixed;bottom:16px;right:16px;z-index:30;max-width:360px"></div>
-
 <script src="../../shared/js/pwa.js"></script>
 <script src="../../shared/js/config.js"></script>
+<script src="../../shared/js/lab-submit.js"></script>
 <script src="../../shared/js/pdf.js"></script>
 <script src="../../shared/js/report-doc.js"></script>
-<script src="js/meta.js"></script>
-<script src="../../shared/js/lab-submit.js"></script>
-<script src="js/app.js"></script>
+<script src="../../shared/js/formula.js"></script>
+<script src="../../shared/js/plot.js"></script>
+<script src="../../shared/js/lab-engine.js"></script>
+<script src="load.js"></script>
 </body>
 </html>

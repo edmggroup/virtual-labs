@@ -17,8 +17,8 @@
 .viewer.compact { display: none; }
 .viewer .stack { position: relative; }
 .viewer canvas { display: block; width: 100%; }
-#plateCanvas { height: 132px; border-radius: 2px; }
-#traceCanvas { height: 136px; margin-top: 4px; }
+#plateCanvas { height: clamp(96px, 15vh, 190px); border-radius: 2px; }
+#traceCanvas { height: clamp(104px, 17vh, 200px); margin-top: 4px; }
 #overlayCanvas { position: absolute; inset: 0; height: 100%; pointer-events: none; }
 .viewer .strip {
   display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
@@ -30,7 +30,7 @@
 
 .comparator {
   display: grid;
-  grid-template-columns: minmax(300px, 1fr) 300px;
+  grid-template-columns: minmax(280px, 1fr) clamp(260px, 24vw, 360px);
   gap: 16px;
   background: var(--panel);
   border: 1px solid var(--rule);
@@ -52,7 +52,7 @@
 .readout .big { font-family: var(--mono); font-size: 1.7rem; letter-spacing: -.02em; }
 .readout .big span { color: var(--ink-3); font-size: .9rem; }
 .readout .parts { font-family: var(--mono); font-size: .76rem; color: var(--ink-2); margin-top: 2px; }
-#magCanvas { width: 100%; height: 92px; display: block; background: var(--plate); border-radius: 2px; margin-top: 8px; }
+#magCanvas { width: 100%; height: clamp(76px, 10vh, 120px); display: block; background: var(--plate); border-radius: 2px; margin-top: 8px; }
 
 
 

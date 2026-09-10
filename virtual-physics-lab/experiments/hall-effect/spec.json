@@ -1,0 +1,68 @@
+{
+  "id": "hall-effect",
+  "title": "Hall coefficient and carrier concentration of a semiconductor",
+  "number": 3,
+  "programme": "M.Sc. Physics",
+  "semester": "Semester I",
+  "course": "General Physics Laboratory III",
+  "subject": "Solid state physics",
+  "duration": "90 min",
+  "summary": "Pass a known current through a germanium slab in a magnetic field, measure the Hall voltage against field, and obtain the Hall coefficient, the carrier concentration and the sign of the majority carrier.",
+
+  "aim": "To determine the Hall coefficient of a doped germanium slab, and from it the concentration and sign of the majority charge carriers.",
+  "apparatus": "Germanium Hall probe on a mount, constant-current source, electromagnet with a calibrated field, digital millivoltmeter.",
+  "theory": [
+    "When a current I flows along a slab of thickness t placed in a magnetic field B at right angles to it, the carriers are pushed to one face until the transverse electric field balances the magnetic force. The potential difference across the slab is the Hall voltage.",
+    "The Hall voltage is proportional to both the current and the field, and inversely proportional to the thickness. The constant of proportionality is the Hall coefficient, which is set by the concentration of carriers and carries their sign: negative for electrons, positive for holes.",
+    "Measuring the Hall voltage against field at fixed current and taking the slope removes any zero error in the voltmeter, which is why the graph is worth more than a single reading."
+  ],
+  "formulae": [
+    "V_H = R_H I B / t",
+    "R_H = (slope of V_H against B) × t / I",
+    "n = 1 / (R_H e)"
+  ],
+  "procedure": "Set the field to each value in turn with the magnet control, and read the Hall voltage. Keep the probe current at the value printed on the mount.",
+
+  "constants": [
+    { "key": "I", "label": "probe current", "value": 0.02, "unit": "A" },
+    { "key": "t", "label": "slab thickness", "value": 0.0005, "unit": "m" },
+    { "key": "q", "label": "elementary charge", "value": 1.602e-19, "unit": "C" }
+  ],
+
+  "table": {
+    "caption": "Table 1 — Hall voltage against magnetic field",
+    "rows": 7,
+    "columns": [
+      { "key": "B", "label": "B", "unit": "T", "kind": "input" },
+      { "key": "VH", "label": "V_H", "unit": "mV", "kind": "measured", "dp": 3,
+        "source": { "formula": "1000 * (-0.00042) * I * B / t", "noise": 0.02, "offset": 0.11 } },
+      { "key": "ratio", "label": "V_H / B", "unit": "mV/T", "kind": "calc", "formula": "VH / B", "dp": 2 }
+    ]
+  },
+
+  "plot": {
+    "x": "B", "y": "VH",
+    "xlabel": "Magnetic field B (T)",
+    "ylabel": "Hall voltage V_H (mV)",
+    "title": "Hall voltage against field",
+    "caption": "The slope gives the Hall coefficient; the intercept is the zero error of the voltmeter."
+  },
+
+  "derived": [
+    { "key": "m", "label": "slope of V_H against B", "formula": "slope(B, VH)", "unit": "mV/T", "dp": 3 },
+    { "key": "c", "label": "intercept", "formula": "intercept(B, VH)", "unit": "mV", "dp": 3 },
+    { "key": "rr", "label": "r² of the fit", "formula": "r2(B, VH)", "unit": "", "dp": 4 }
+  ],
+
+  "results": [
+    { "key": "RH", "label": "Hall coefficient R_H", "formula": "m * t / (I * 1000)", "unit": "m³/C", "dp": 6 },
+    { "key": "n", "label": "carrier concentration n", "formula": "abs(1 / (RH * q))", "unit": "m⁻³", "dp": 0 }
+  ],
+
+  "questions": [
+    "What does the sign of the Hall coefficient tell you about the sample, and what is the sign of yours?",
+    "Why is the slope of V_H against B a better measure than a single pair of readings?",
+    "How would the Hall voltage change if the slab were made twice as thick, at the same current and field?",
+    "The Hall coefficient of a metal is far smaller than that of a doped semiconductor. Why?"
+  ]
+}

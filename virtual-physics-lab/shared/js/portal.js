@@ -40,9 +40,15 @@
     return true;
   }
 
+  function hrefFor(x) {
+    return x.engine === "spec"
+      ? "experiments/_generic/?id=" + encodeURIComponent(x.id)
+      : "experiments/" + x.id + "/";
+  }
+
   function entry(x) {
     var live = x.status !== "planned";
-    var href = "experiments/" + x.id + "/";
+    var href = hrefFor(x);
     var shot = x.thumb
       ? '<span class="shot"><img src="' + esc(x.thumb) + '" alt=""></span>'
       : '<span class="shot blank"></span>';
@@ -58,16 +64,17 @@
       '<div class="line">' + esc(line) + "</div>" +
       "<h3>" + title + "</h3>" +
       "<p>" + esc(x.summary || "") + "</p>" +
-      (live ? '<div class="actions">' +
-        '<a href="' + esc(href) + '">Open the experiment</a>' +
-        '<a href="' + esc(href) + '?exam=1">Assessed version</a>' +
-        "</div>" : "") +
+      (live ? '<div class="actions"><a href="' + esc(href) + '">Open the experiment</a></div>' : "") +
       "</div></article>";
   }
 
   function render() {
     var list = CAT.filter(matches);
     el("count").textContent = list.length + (list.length === 1 ? " experiment" : " experiments");
+
+    /* filters earn their place once there is something to filter */
+    var bar = document.querySelector(".filters");
+    if (bar) bar.hidden = CAT.length < 2;
 
     if (!list.length) {
       el("catalog").innerHTML = '<p class="empty">Nothing matches those filters. Clear the search box, or choose "All" in each list.</p>';
@@ -88,7 +95,7 @@
     el("catalog").innerHTML = groups.map(function (g) {
       return '<section class="course-group"><h2>' + esc(g.course || "Other experiments") + "</h2>" +
         '<div class="meta">' + esc([g.programme, g.semester].filter(Boolean).join("  ·  ")) + "</div>" +
-        g.items.map(entry).join("") + "</section>";
+        '<div class="entries">' + g.items.map(entry).join("") + "</div></section>";
     }).join("");
   }
 
@@ -98,6 +105,7 @@
     el("sitePlace").textContent = [CFG.DEPARTMENT, CFG.INSTITUTION].filter(Boolean).join(", ");
     el("siteTagline").textContent = CFG.TAGLINE || "";
 
+    published();
     fill(el("fProgramme"), uniq(CAT.map(function (x) { return x.programme; })), "All programmes");
     fill(el("fCourse"), uniq(CAT.map(function (x) { return x.course; })), "All courses");
     fill(el("fSubject"), uniq(CAT.map(function (x) { return x.subject; })), "All subjects");
@@ -111,6 +119,50 @@
     el("fSearch").addEventListener("input", function () { state.q = this.value.trim(); render(); });
 
     render();
+  }
+
+  /* Experiments written in the admin console live in the sheet rather than in
+     this file. Pull them in if an endpoint is configured; the page works
+     perfectly well without them. */
+  function published() {
+    if (!CFG.APPS_SCRIPT_URL) return;
+    var cb = "vlabcat" + Date.now();
+    var timer = setTimeout(cleanup, 12000);
+    function cleanup() {
+      clearTimeout(timer);
+      delete root[cb];
+      if (tag.parentNode) tag.parentNode.removeChild(tag);
+    }
+    root[cb] = function (res) {
+      cleanup();
+      if (!res || !res.ok || !res.experiments) return;
+      var byId = {};
+      CAT.forEach(function (x) { byId[x.id] = x; });
+      res.experiments.forEach(function (x) {
+        var have = byId[x.id];
+        if (have) {
+          /* an experiment listed in this file: the sheet may re-file it, but
+             it keeps its own page, its thumbnail and its engine */
+          ["title", "programme", "semester", "course", "subject", "duration", "summary"]
+            .forEach(function (k) { if (x[k]) have[k] = x[k]; });
+          if (x.number != null && x.number !== "") have.number = x.number;
+          return;
+        }
+        if (!x.hasSpec) return;          // an override for something not listed here
+        x.engine = "spec";
+        x.status = x.status || "live";
+        CAT.push(x);
+        byId[x.id] = x;
+      });
+      fill(el("fProgramme"), uniq(CAT.map(function (x) { return x.programme; })), "All programmes");
+      fill(el("fCourse"), uniq(CAT.map(function (x) { return x.course; })), "All courses");
+      fill(el("fSubject"), uniq(CAT.map(function (x) { return x.subject; })), "All subjects");
+      render();
+    };
+    var tag = document.createElement("script");
+    tag.src = CFG.APPS_SCRIPT_URL + "?action=catalog&callback=" + cb;
+    tag.onerror = cleanup;
+    document.head.appendChild(tag);
   }
 
   root.addEventListener("DOMContentLoaded", boot);

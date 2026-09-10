@@ -1,6 +1,8 @@
 /* ============================================================
-   report.js — assembles the student record, exports it and
-   posts it to the department's Google Sheet.
+   report.js — describes the student's record once, as blocks.
+   The shared ReportDoc turns that same list into the preview on
+   screen, the PDF they download, and the document the
+   department's sheet builds.
    ============================================================ */
 
 (function (root) {
@@ -11,215 +13,237 @@
   var EXP = root.EXPERIMENT || {};
 
   function fmt(x, n) { return isFinite(x) ? Number(x).toFixed(n === undefined ? 3 : n) : "—"; }
-  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]; }); }
-  function nl2p(s) {
-    s = String(s || "").trim();
-    if (!s) return '<p style="color:#7c8b90">— not answered —</p>';
-    return s.split(/\n{2,}/).map(function (p) { return "<p>" + esc(p).replace(/\n/g, "<br>") + "</p>"; }).join("");
+  function num(x, n) { return isFinite(x) ? Number(Number(x).toFixed(n)) : ""; }
+
+  /* ---------- the record, as blocks ---------- */
+
+  /* a canvas turned into something both the preview and the PDF can show */
+  function plateFigure(source, caption) {
+    var L = root.LabState;
+    if (!L.plateImage) return null;
+    var cv = null;
+    try { cv = L.plateImage(source); } catch (e) { cv = null; }
+    if (!cv) return null;
+    var img = root.ReportDoc.canvasToJpeg(cv, 0.82);
+    return {
+      type: "image", dataUrl: img.dataUrl, w: img.w, h: img.h,
+      caption: caption, key: "plate-" + source
+    };
   }
 
-  function tableHTML(caption, head, rows) {
-    return '<div class="tablewrap"><table><caption>' + caption + '</caption><thead><tr>' +
-      head.map(function (h) { return '<th class="num">' + h + '</th>'; }).join("") +
-      '</tr></thead><tbody>' +
-      rows.map(function (r) {
-        return "<tr>" + r.map(function (c) { return '<td class="num">' + c + "</td>"; }).join("") + "</tr>";
-      }).join("") + "</tbody></table></div>";
-  }
-
-  function deslandreHTML(entries, valueOf, caption, dp) {
-    var vus = [], vls = [];
-    entries.forEach(function (b) {
-      if (vus.indexOf(b.vu) < 0) vus.push(b.vu);
-      if (vls.indexOf(b.vl) < 0) vls.push(b.vl);
-    });
-    vus.sort(function (a, b) { return a - b; }); vls.sort(function (a, b) { return a - b; });
-    var head = '<tr><th>v′ \\ v″</th>' + vls.map(function (v) { return '<th class="num">' + v + "</th>"; }).join("") + "</tr>";
-    var body = vus.map(function (vu) {
-      return '<tr><th class="num">' + vu + "</th>" + vls.map(function (vl) {
-        var hit = entries.filter(function (b) { return b.vu === vu && b.vl === vl; })[0];
-        return hit ? '<td class="num' + (vu === vl ? " diag" : "") + '">' + fmt(valueOf(hit), dp) + "</td>" : '<td class="empty"></td>';
-      }).join("") + "</tr>";
-    }).join("");
-    return '<div class="tablewrap"><table class="des"><caption>' + caption + "</caption><thead>" + head + "</thead><tbody>" + body + "</tbody></table></div>";
-  }
-
-  function stateHTML(st, pr, litWe, litWexe) {
-    if (!st || !st.first.length) return "";
-    var first = tableHTML("First differences ΔG" + pr + "(v + ½)",
-      ["Interval", "Individual values (cm⁻¹)", "Mean (cm⁻¹)"],
-      st.first.map(function (f) {
-        return ["ΔG" + pr + "(" + f.v + " + ½)",
-          f.terms.map(function (t) { return fmt(t.value, 1); }).join(", "),
-          fmt(f.value, 1)];
-      }));
-    var second = tableHTML("Second differences Δ²G" + pr,
-      ["Difference", "Value (cm⁻¹)"],
-      st.second.map(function (s) {
-        return ["ΔG" + pr + "(" + s.from + " + ½) − ΔG" + pr + "(" + s.to + " + ½)", fmt(s.value, 2)];
-      }).concat([["Mean = 2ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr, fmt(st.twoWexe, 2)]]));
-    var calc = '<p class="formula">ω<sub>e</sub>' + pr + "x<sub>e</sub>" + pr + " = " + fmt(st.wexe, 2) + " cm⁻¹" +
-      "  ω<sub>e</sub>" + pr + " = ΔG" + pr + "(½) + 2ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr + " = " +
-      fmt(st.first[0].value, 1) + " + " + fmt(st.twoWexe, 2) + " = " + fmt(st.we, 1) + " cm⁻¹" +
-      "  x<sub>e</sub>" + pr + " = " + fmt(st.xe, 5) + "</p>";
-    var bs = st.birgeSponer ? '<p>Birge–Sponer straight line: intercept ω<sub>e</sub>' + pr + " = " + fmt(st.birgeSponer.we, 1) +
-      " cm⁻¹, slope −2ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr + " gives ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr +
-      " = " + fmt(st.birgeSponer.wexe, 2) + " cm⁻¹ (r² = " + fmt(st.birgeSponer.r2, 4) + ").</p>" : "";
-    return first + second + calc + bs;
-  }
-
-  function build() {
+  function blocks(opts) {
+    opts = opts || {};
     var L = root.LabState;
     var S = L.state, a = L.analysis(), bands = L.bandEntries(), hg = L.hgEntries();
-    var G = L.graphs;
+    var H = L.studentHartmann(), R = L.workResults(), W = L.work();
     var st = S.student;
+    var b = [];
 
-    var html = "";
-    html += '<h1 style="margin-bottom:2px">Vibrational constants of AlO from its electronic band spectrum</h1>';
-    html += '<p style="color:#4d5f66;margin-bottom:18px">' +
-      esc([EXP.course, EXP.number ? "experiment " + EXP.number : ""].filter(Boolean).join(", ")) +
-      " — " + esc([CFG.DEPARTMENT, CFG.INSTITUTION].filter(Boolean).join(", ")) + "</p>";
-    html += '<dl class="kv" style="margin-bottom:20px">' +
-      "<dt>Name</dt><dd>" + esc(st.name) + "</dd>" +
-      "<dt>Register number</dt><dd>" + esc(st.register) + "</dd>" +
-      "<dt>Batch</dt><dd>" + esc(st.batch) + "</dd>" +
-      (st.partner ? "<dt>Partner</dt><dd>" + esc(st.partner) + "</dd>" : "") +
-      "<dt>Date</dt><dd>" + esc(st.date) + "</dd>" +
-      "<dt>Least count of the comparator</dt><dd>" + fmt(P.PLATE.leastCount) + " cm</dd>" +
-      "</dl>";
-
-    html += "<h2>Aim</h2><p>To determine the vibrational constants of the aluminium oxide molecule for the upper and lower electronic states from the band heads of its visible band system.</p>";
-
-    html += "<h2>Observations</h2>";
-    html += tableHTML("Table 1 — mercury calibration lines",
-      ["Line", "λ (Å)", "M.S.R. (cm)", "V.S.D.", "d (cm)"],
-      hg.filter(function (h) { return isFinite(h.d); }).map(function (h) {
-        var v = P.vernier(h.d);
-        return ["Hg " + esc(h.name), fmt(h.lambda, 2), fmt(v.msr, 2), v.vsd, fmt(h.d, 3)];
-      }));
-
-    if (S.hart) {
-      html += '<p class="formula">λ = λ<sub>0</sub> + C ⁄ (d − d<sub>0</sub>): λ<sub>0</sub> = ' + fmt(S.hart.lam0, 2) +
-        " Å, C = " + fmt(S.hart.C, 1) + " Å·cm, d<sub>0</sub> = " + fmt(S.hart.d0, 4) + " cm</p>";
-      var res = hg.filter(function (h) { return isFinite(h.d); }).map(function (h) {
-        var lam = P.lambdaFromHartmann(S.hart, h.d);
-        return ["Hg " + esc(h.name), fmt(h.d, 3), fmt(lam, 2), fmt(h.lambda, 2), fmt(lam - h.lambda, 2)];
-      });
-      html += tableHTML("Table 2 — check of the calibration", ["Line", "d (cm)", "λ calculated (Å)", "λ standard (Å)", "difference (Å)"], res);
-    }
-
-    html += tableHTML("Table 3 — AlO band heads",
-      ["Band (v′, v″)", "Δv", "d (cm)", "λ (Å)", "ν̃ (cm⁻¹)"],
-      bands.map(function (b) {
-        return ["(" + b.vu + ", " + b.vl + ")", (b.vu - b.vl > 0 ? "+" : "") + (b.vu - b.vl), fmt(b.d, 3), fmt(b.lambda, 2), fmt(b.nu, 1)];
-      }));
-
-    if (bands.length) {
-      html += "<h2>Deslandre tables</h2>";
-      html += deslandreHTML(bands, function (b) { return b.lambda; }, "Table 4 — band heads in Å", 1);
-      html += deslandreHTML(bands, function (b) { return b.nu; }, "Table 5 — band heads in cm⁻¹", 1);
-    }
-
-    if (a) {
-      html += "<h2>Upper electronic state B²Σ⁺</h2>" + stateHTML(a.upper, "′");
-      html += "<h2>Lower electronic state X²Σ⁺</h2>" + stateHTML(a.lower, "″");
-    }
-
-    if (G && (G.spectrum || G.bsUpper)) {
-      html += "<h2>Graphs</h2>";
-      if (G.spectrum) html += '<div class="chartbox">' + G.spectrum + "</div>";
-      if (G.calibration) html += '<div class="chartbox" style="margin-top:12px">' + G.calibration + "</div>";
-      if (G.bsUpper) html += '<div class="chartbox" style="margin-top:12px">' + G.bsUpper + "</div>";
-      if (G.bsLower) html += '<div class="chartbox" style="margin-top:12px">' + G.bsLower + "</div>";
-    }
-
-    if (a) {
-      html += "<h2>Result</h2>" + L.resultTable(a);
-      html += "<p>The vibrational quantum of the excited state is smaller and its anharmonicity larger, which is what one expects: the bond is weaker and the potential well shallower once the molecule is electronically excited.</p>";
-    }
-
-    if (S.answers.errors) html += "<h2>Sources of error</h2>" + nl2p(S.answers.errors);
-
-    html += "<h2>Questions</h2>";
-    L.questions.forEach(function (q, i) {
-      html += "<h3>" + (i + 1) + ". " + esc(q.q) + "</h3>" + nl2p(S.answers[q.k]);
+    b.push({ type: "title", text: "Vibrational constants of AlO from its electronic band spectrum" });
+    b.push({
+      type: "paragraph",
+      text: [EXP.course, EXP.number ? "experiment " + EXP.number : ""].filter(Boolean).join(", ") +
+        " — " + [CFG.DEPARTMENT, CFG.INSTITUTION].filter(Boolean).join(", ")
+    });
+    b.push({
+      type: "meta", pairs: [
+        ["Name", st.name || "—"],
+        ["Register number", st.register || "—"],
+        ["Batch", st.batch || "—"]
+      ].concat(st.partner ? [["Partner", st.partner]] : [])
+        .concat([["Date", st.date || "—"], ["Least count of the comparator", fmt(P.PLATE.leastCount) + " cm"]])
     });
 
-    return html;
+    b.push({ type: "heading", text: "Aim" });
+    b.push({
+      type: "paragraph",
+      text: "To determine the vibrational constants of the aluminium oxide molecule for the upper (B²Σ⁺) and lower (X²Σ⁺) electronic states from the band heads of its visible band system."
+    });
+
+    b.push({ type: "heading", text: "Observations" });
+
+    if (opts.graphs !== false) {
+      var hgPlate = plateFigure("hg", "The mercury comparison spectrum, with the lines measured marked and labelled by wavelength in Å.");
+      if (hgPlate) b.push(hgPlate);
+    }
+
+    b.push({
+      type: "table", caption: "Table 1 — comparator readings of the mercury standard lines",
+      rows: [["Line", "λ (Å)", "M.S.R. (cm)", "V.S.D.", "d (cm)"]].concat(
+        hg.filter(function (h) { return isFinite(h.d); }).map(function (h) {
+          var v = P.vernier(h.d);
+          return ["Hg " + h.name, fmt(h.lambda, 2), fmt(v.msr, 2), String(v.vsd), fmt(h.d, 3)];
+        }))
+    });
+
+    if (H) {
+      b.push({ type: "formula", text: "λ = λ₀ + C ⁄ (d − d₀)" });
+      b.push({
+        type: "paragraph",
+        text: "Constants worked out from three mercury lines: λ₀ = " + fmt(H.lam0, 2) + " Å,  C = " + fmt(H.C, 1) +
+          " Å·cm,  d₀ = " + fmt(H.d0, 4) + " cm"
+      });
+      if (W.notes.hart) b.push({ type: "paragraph", text: "Working: " + W.notes.hart });
+      b.push({
+        type: "table", caption: "Table 2 — the same constants applied to every mercury line measured",
+        rows: [["Line", "d (cm)", "λ calculated (Å)", "λ standard (Å)", "difference (Å)"]].concat(
+          hg.filter(function (h) { return isFinite(h.d); }).map(function (h) {
+            var lam = P.lambdaFromHartmann(H, h.d);
+            return ["Hg " + h.name, fmt(h.d, 3), fmt(lam, 2), fmt(h.lambda, 2), fmt(lam - h.lambda, 2)];
+          }))
+      });
+    }
+
+    if (opts.graphs !== false) {
+      var aloPlate = plateFigure("alo", "The AlO band system as recorded on the plate. Each mark is a band head measured with the comparator; the five groups are the sequences Δv = +2 to −2, every band shaded away to the red.");
+      if (aloPlate) b.push(aloPlate);
+    }
+
+    b.push({
+      type: "table", caption: "Table 3 — AlO band heads",
+      rows: [["Band (v′, v″)", "Δv", "d (cm)", "λ (Å)", "ν̃ (cm⁻¹)"]].concat(
+        bands.map(function (x) {
+          var dv = x.vu - x.vl;
+          return ["(" + x.vu + ", " + x.vl + ")", (dv > 0 ? "+" : "") + dv,
+            fmt(x.d, 3), fmt(x.lambda, 2), fmt(x.nu, 1)];
+        }))
+    });
+
+    if (bands.length) {
+      b.push({ type: "heading", text: "Deslandre tables" });
+      b.push(deslandre(bands, function (x) { return x.lambda; }, "Table 4 — band heads in Å", 1));
+      b.push(deslandre(bands, function (x) { return x.nu; }, "Table 5 — band heads in cm⁻¹", 1));
+    }
+
+    if (a) {
+      b.push({ type: "heading", text: "Upper electronic state B²Σ⁺" });
+      pushState(b, a.upper, W.up, W.notes.up, "′");
+      b.push({ type: "heading", text: "Lower electronic state X²Σ⁺" });
+      pushState(b, a.lower, W.lo, W.notes.lo, "″");
+    }
+
+    if (opts.graphs !== false) {
+      var G = L.graphs;
+      var figures = [
+        [G.spectrum, "The densitometer trace of the same plate, now on a wavelength scale from your own calibration, with the assignment of each head."],
+        [G.calibration, "Hartmann dispersion curve through the mercury lines."],
+        [G.bsUpper, "Birge–Sponer plot for the upper state."],
+        [G.bsLower, "Birge–Sponer plot for the lower state."]
+      ].filter(function (f) { return f[0]; });
+      if (figures.length) {
+        b.push({ type: "heading", text: "Graphs" });
+        figures.forEach(function (f, i) {
+          b.push({ type: "image", svg: f[0], caption: f[1], key: "fig" + i });
+        });
+      }
+    }
+
+    if (isFinite(R.upper.we) || isFinite(R.lower.we)) {
+      b.push({ type: "heading", text: "Result" });
+      b.push({
+        type: "table", caption: "Table 6 — vibrational constants of AlO",
+        rows: [["Quantity", "My value", "Literature", "Difference (%)"],
+          resultRow("ωe′ (cm⁻¹), upper state B²Σ⁺", R.upper.we, P.LIT.we_u, 1),
+          resultRow("ωe′xe′ (cm⁻¹)", R.upper.wexe, P.LIT.wexe_u, 2),
+          resultRow("xe′", R.upper.xe, P.LIT.xe_u, 5),
+          resultRow("ωe″ (cm⁻¹), lower state X²Σ⁺", R.lower.we, P.LIT.we_l, 1),
+          resultRow("ωe″xe″ (cm⁻¹)", R.lower.wexe, P.LIT.wexe_l, 2),
+          resultRow("xe″", R.lower.xe, P.LIT.xe_l, 5)]
+      });
+      b.push({
+        type: "paragraph",
+        text: "The vibrational quantum of the excited state is smaller and its anharmonicity larger, which is what one expects: the bond is weaker and the potential well shallower once the molecule is electronically excited."
+      });
+    }
+
+    if (S.answers.errors) {
+      b.push({ type: "heading", text: "Sources of error" });
+      b.push({ type: "paragraph", text: S.answers.errors });
+    }
+
+    b.push({ type: "heading", text: "Questions" });
+    L.questions.forEach(function (q, i) {
+      b.push({ type: "heading", level: 3, text: (i + 1) + ". " + q.q });
+      b.push({ type: "paragraph", text: S.answers[q.k] || "— not answered —" });
+    });
+
+    return b;
   }
+
+  function resultRow(label, got, lit, dp) {
+    var err = isFinite(got) && lit ? Math.abs(got - lit) / lit * 100 : NaN;
+    return [label, fmt(got, dp), fmt(lit, dp), fmt(err, 1)];
+  }
+
+  function deslandre(entries, valueOf, caption, dp) {
+    var vus = [], vls = [];
+    entries.forEach(function (x) {
+      if (vus.indexOf(x.vu) < 0) vus.push(x.vu);
+      if (vls.indexOf(x.vl) < 0) vls.push(x.vl);
+    });
+    vus.sort(function (a, b) { return a - b; });
+    vls.sort(function (a, b) { return a - b; });
+    var rows = [["v′ \\ v″"].concat(vls.map(String))];
+    vus.forEach(function (vu) {
+      rows.push([String(vu)].concat(vls.map(function (vl) {
+        var hit = entries.filter(function (x) { return x.vu === vu && x.vl === vl; })[0];
+        return hit ? fmt(valueOf(hit), dp) : "—";
+      })));
+    });
+    return { type: "table", caption: caption, rows: rows };
+  }
+
+  function pushState(b, st, w, note, pr) {
+    if (!st || !st.first.length) return;
+    b.push({
+      type: "table", caption: "First differences ΔG" + pr + "(v + ½), cm⁻¹",
+      rows: [["Interval", "Value taken"]].concat(
+        st.first.slice(0, 3).map(function (f, i) {
+          return ["ΔG" + pr + "(" + f.v + " + ½)", w.dg[i] === "" || w.dg[i] === undefined ? "—" : String(w.dg[i])];
+        }))
+    });
+    b.push({
+      type: "table", caption: "Second difference and the constants",
+      rows: [
+        ["Quantity", "Value"],
+        ["Δ²G" + pr + " = ΔG" + pr + "(½) − ΔG" + pr + "(3/2)", String(w.d2 || "—")],
+        ["ωe" + pr + "xe" + pr + " (cm⁻¹)", String(w.wexe || "—")],
+        ["ωe" + pr + " (cm⁻¹)", String(w.we || "—")],
+        ["xe" + pr, String(w.xe || "—")]
+      ]
+    });
+    if (note) b.push({ type: "paragraph", text: "Working: " + note });
+  }
+
+  /* ---------- outputs ---------- */
 
   function render(host) {
-    if (!host) return;
-    host.innerHTML = build();
+    if (host) host.innerHTML = root.ReportDoc.html(blocks());
   }
 
-  /* ---------- exports ---------- */
-
-  function download(name, text, mime) {
-    var blob = new Blob([text], { type: mime || "text/plain;charset=utf-8" });
-    downloadURL(name, URL.createObjectURL(blob), true);
-  }
-  function downloadDataURL(name, url) { downloadURL(name, url, false); }
-  function downloadURL(name, url, revoke) {
-    var a = document.createElement("a");
-    a.href = url; a.download = name;
-    document.body.appendChild(a); a.click(); a.remove();
-    if (revoke) setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
-  }
-
-  var PRINT_CSS = "body{font-family:Georgia,'Times New Roman',serif;color:#14212a;max-width:900px;margin:32px auto;padding:0 20px;line-height:1.5}" +
-    "h1{font-size:1.5rem}h2{font-size:1.15rem;border-bottom:1px solid #c2ccc4;padding-bottom:4px;margin-top:26px}h3{font-size:1rem}" +
-    "table{border-collapse:collapse;width:100%;font-size:.8rem;font-family:Arial,sans-serif}" +
-    "th,td{border:1px solid #c2ccc4;padding:4px 7px;text-align:right}th:first-child,td:first-child{text-align:left}" +
-    "caption{caption-side:top;text-align:left;font-weight:600;padding-bottom:5px}" +
-    ".tablewrap{overflow-x:auto;margin-bottom:14px}.des td.diag{background:#eef6f3}.des td.empty{background:#f4f6f3}" +
-    ".kv{display:grid;grid-template-columns:max-content 1fr;gap:2px 14px}.kv dt{color:#4d5f66}.kv dd{margin:0;font-family:monospace}" +
-    ".formula{background:#f5f7f3;border:1px solid #d9e0d9;padding:7px 10px;margin:0 0 10px}" +
-    ".chartbox{border:1px solid #c2ccc4;padding:6px;margin-bottom:12px}.chartbox svg{width:100%;height:auto;display:block}" +
-    "@media print{.tablewrap,.chartbox{page-break-inside:avoid}h2{page-break-after:avoid}}";
-
-  function downloadHTML() {
+  function downloadPDF(msgEl) {
     var S = root.LabState.state;
-    var doc = "<!doctype html><html><head><meta charset='utf-8'><title>AlO band spectrum — " +
-      esc(S.student.name || "report") + "</title><style>" + PRINT_CSS + "</style></head><body>" +
-      build() + "</body></html>";
-    download("alo-report-" + (S.student.register || "record") + ".html", doc, "text/html;charset=utf-8");
+    if (msgEl) msgEl.textContent = "Building the PDF…";
+    return root.ReportDoc.download(blocks(), {
+      title: "AlO band spectrum — " + (S.student.name || "record"),
+      author: S.student.name || "",
+      subject: EXP.course || "",
+      header: (EXP.title || "") + (EXP.number ? "  ·  experiment " + EXP.number : ""),
+      footer: [S.student.name, S.student.register].filter(Boolean).join("  ·  ")
+    }, "alo-band-spectrum-" + (S.student.register || "record") + ".pdf")
+      .then(function () { if (msgEl) msgEl.textContent = "PDF downloaded."; return true; })
+      .catch(function (e) {
+        if (msgEl) msgEl.textContent = "The PDF could not be built. Try again, or use the print button.";
+        if (root.console) console.error(e);
+        return false;
+      });
   }
 
-  function downloadCSV() {
-    var L = root.LabState, S = L.state, a = L.analysis();
-    var rows = [];
-    function push() { rows.push(Array.prototype.slice.call(arguments).join(",")); }
-    push("AlO band spectrum — student record");
-    push("name", '"' + (S.student.name || "") + '"');
-    push("register", '"' + (S.student.register || "") + '"');
-    push("batch", '"' + (S.student.batch || "") + '"');
-    push("date", S.student.date);
-    push("least count (cm)", P.PLATE.leastCount);
-    push("");
-    push("mercury line (A)", "comparator reading (cm)");
-    L.hgEntries().forEach(function (h) { if (isFinite(h.d)) push(h.lambda, h.d); });
-    push("");
-    if (S.hart) { push("lambda0 (A)", fmt(S.hart.lam0, 3)); push("C (A cm)", fmt(S.hart.C, 3)); push("d0 (cm)", fmt(S.hart.d0, 4)); push(""); }
-    push("v'", 'v"', "d (cm)", "lambda (A)", "nu (cm-1)");
-    L.bandEntries().forEach(function (b) { push(b.vu, b.vl, fmt(b.d, 3), fmt(b.lambda, 2), fmt(b.nu, 2)); });
-    push("");
-    if (a) {
-      push("state", "DeltaG(1/2)", "2wexe", "we", "xe");
-      push("upper B2Sigma+", fmt(a.upper.first[0] && a.upper.first[0].value, 2), fmt(a.upper.twoWexe, 3), fmt(a.upper.we, 2), fmt(a.upper.xe, 6));
-      push("lower X2Sigma+", fmt(a.lower.first[0] && a.lower.first[0].value, 2), fmt(a.lower.twoWexe, 3), fmt(a.lower.we, 2), fmt(a.lower.xe, 6));
-    }
-    download("alo-readings-" + (S.student.register || "record") + ".csv", rows.join("\n"), "text/csv;charset=utf-8");
-  }
-
-  /* ---------- submission ----------
-     The site's shared library owns the transport; this only has
-     to say what one row of the sheet looks like and what should
-     go into the student's document.                          */
+  /* ---------- submission ---------- */
 
   function summary() {
-    var L = root.LabState, S = L.state, a = L.analysis();
-    var h = S.hart || {};
+    var L = root.LabState, S = L.state, R = L.workResults();
+    var h = L.studentHartmann() || {};
     var out = {
       "Bands measured": L.bandEntries().length,
       "Hg lines": L.hgEntries().filter(function (x) { return isFinite(x.d); }).length,
@@ -227,100 +251,78 @@
       "C (A cm)": num(h.C, 1),
       "d0 (cm)": num(h.d0, 4)
     };
-    if (a) {
-      out["we' (cm-1)"] = num(a.upper.we, 2);
-      out["wexe' (cm-1)"] = num(a.upper.wexe, 3);
-      out["xe'"] = num(a.upper.xe, 6);
-      out['we" (cm-1)'] = num(a.lower.we, 2);
-      out['wexe" (cm-1)'] = num(a.lower.wexe, 3);
-      out['xe"'] = num(a.lower.xe, 6);
-      out["err we' (%)"] = num(Math.abs(a.upper.we - P.LIT.we_u) / P.LIT.we_u * 100, 2);
-      out['err we" (%)'] = num(Math.abs(a.lower.we - P.LIT.we_l) / P.LIT.we_l * 100, 2);
-    }
+    out["we' (cm-1)"] = num(R.upper.we, 2);
+    out["wexe' (cm-1)"] = num(R.upper.wexe, 3);
+    out["xe'"] = num(R.upper.xe, 6);
+    out['we" (cm-1)'] = num(R.lower.we, 2);
+    out['wexe" (cm-1)'] = num(R.lower.wexe, 3);
+    out['xe"'] = num(R.lower.xe, 6);
+    if (isFinite(R.upper.we)) out["err we' (%)"] = num(Math.abs(R.upper.we - P.LIT.we_u) / P.LIT.we_u * 100, 2);
+    if (isFinite(R.lower.we)) out['err we" (%)'] = num(Math.abs(R.lower.we - P.LIT.we_l) / P.LIT.we_l * 100, 2);
     return out;
   }
 
-  function num(x, n) { return isFinite(x) ? Number(Number(x).toFixed(n)) : ""; }
+  /* Submitting finishes the experiment. The record goes off, the PDF is
+     put in the student's hands first, and the working is cleared so the
+     next person at this machine starts from a blank plate. Nothing is
+     cleared until the send has actually gone through. */
+  function submit(msgEl) {
+    if (!root.VirtualLab) { if (msgEl) msgEl.textContent = "Submission library not loaded."; return; }
+    var L = root.LabState, S = L.state;
+    if (!S.student.name || !S.student.register) {
+      if (msgEl) msgEl.textContent = "Add your name and register number before submitting.";
+      return;
+    }
+    var ok = root.confirm(
+      "Submit this record?\n\n" +
+      "You can submit once. Your PDF will be downloaded first, and your readings will then be " +
+      "cleared from this browser, so check the report below before you go ahead."
+    );
+    if (!ok) return;
 
-  /* blocks the backend turns into a Google Doc */
-  function reportBlocks() {
-    var L = root.LabState, S = L.state, a = L.analysis();
-    var b = [];
-    b.push({ type: "heading", text: "Observations" });
-    b.push({
-      type: "table", caption: "Mercury calibration lines",
-      rows: [["Standard lambda (A)", "Comparator reading (cm)"]].concat(
-        L.hgEntries().filter(function (h) { return isFinite(h.d); })
-          .map(function (h) { return [fmt(h.lambda, 2), fmt(h.d, 3)]; }))
+    if (msgEl) msgEl.textContent = "Building your PDF…";
+    downloadPDF(msgEl).then(function (built) {
+      if (!built) {
+        if (msgEl) msgEl.textContent =
+          "Nothing was sent: your PDF could not be built, and submitting would have cleared your work without a copy in your hands. Try the print button, then submit.";
+        return false;
+      }
+      if (msgEl) msgEl.textContent = "Sending…";
+      return sendRecord(msgEl);
     });
-    if (S.hart) {
-      b.push({
-        type: "paragraph",
-        text: "Hartmann constants: lambda0 = " + fmt(S.hart.lam0, 2) + " A, C = " +
-          fmt(S.hart.C, 1) + " A cm, d0 = " + fmt(S.hart.d0, 4) + " cm"
-      });
-    }
-    b.push({
-      type: "table", caption: "Band heads",
-      rows: [["v'", 'v"', "d (cm)", "lambda (A)", "nu (cm-1)"]].concat(
-        L.bandEntries().map(function (x) {
-          return [String(x.vu), String(x.vl), fmt(x.d, 3), fmt(x.lambda, 2), fmt(x.nu, 1)];
-        }))
-    });
-    if (a) {
-      b.push({ type: "heading", text: "Result" });
-      b.push({
-        type: "table", caption: "Vibrational constants",
-        rows: [
-          ["Quantity", "Measured", "Literature"],
-          ["we' (cm-1)", fmt(a.upper.we, 1), fmt(P.LIT.we_u, 1)],
-          ["wexe' (cm-1)", fmt(a.upper.wexe, 2), fmt(P.LIT.wexe_u, 2)],
-          ["xe'", fmt(a.upper.xe, 5), fmt(P.LIT.xe_u, 5)],
-          ['we" (cm-1)', fmt(a.lower.we, 1), fmt(P.LIT.we_l, 1)],
-          ['wexe" (cm-1)', fmt(a.lower.wexe, 2), fmt(P.LIT.wexe_l, 2)],
-          ['xe"', fmt(a.lower.xe, 5), fmt(P.LIT.xe_l, 5)]
-        ]
-      });
-    }
-    b.push({ type: "heading", text: "Questions" });
-    L.questions.forEach(function (q, i) {
-      b.push({ type: "heading", level: 3, text: (i + 1) + ". " + q.q });
-      b.push({ type: "paragraph", text: S.answers[q.k] || "—" });
-    });
-    if (S.answers.errors) {
-      b.push({ type: "heading", text: "Sources of error" });
-      b.push({ type: "paragraph", text: S.answers.errors });
-    }
-    return b;
   }
 
-  function payload() {
+  function sendRecord(msgEl) {
     var L = root.LabState, S = L.state;
-    return {
+    return root.VirtualLab.submit({
       student: S.student,
       summary: summary(),
       data: {
         leastCount: P.PLATE.leastCount,
-        hartmann: S.hart,
+        hartmann: L.studentHartmann(),
+        working: L.work(),
         mercury: L.hgEntries().filter(function (h) { return isFinite(h.d); })
           .map(function (h) { return { lambda: h.lambda, d: h.d }; }),
-        bands: L.bandEntries().map(function (b) {
-          return { vu: b.vu, vl: b.vl, d: b.d, lambda: num(b.lambda, 2), nu: num(b.nu, 2) };
+        bands: L.bandEntries().map(function (x) {
+          return { vu: x.vu, vl: x.vl, d: x.d, lambda: num(x.lambda, 2), nu: num(x.nu, 2) };
         }),
         answers: S.answers
       },
-      report: reportBlocks()
-    };
-  }
-
-  function submit(msgEl) {
-    if (!root.VirtualLab) { if (msgEl) msgEl.textContent = "Submission library not loaded."; return; }
-    root.VirtualLab.submit(payload(), msgEl);
+      report: root.ReportDoc.forBackend(blocks({ graphs: false }))
+    }, msgEl).then(function (sent) {
+      if (!sent) return false;
+      root.VirtualLab.markSubmitted(EXP.id, S.student.register);
+      L.finish();
+      return true;
+    });
   }
 
   root.Report = {
-    render: render, build: build, download: download, downloadDataURL: downloadDataURL,
-    downloadHTML: downloadHTML, downloadCSV: downloadCSV, submit: submit, payload: payload
+    blocks: blocks,
+    render: render,
+    downloadPDF: downloadPDF,
+    submit: submit,
+    summary: summary
   };
 
 })(window);

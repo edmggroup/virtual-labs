@@ -20,6 +20,9 @@
      duration    rough working time, shown on the card
      summary     one or two sentences, no marketing
      thumb       image relative to the site root, or null
+     engine      omit for an experiment with its own folder of code;
+                 "spec" for one described in a spec.json or written
+                 in the admin console, which the generic engine runs
      status      "live" or "planned" — planned entries are shown
                  greyed out and are not clickable
    ============================================================ */
@@ -43,8 +46,9 @@ window.LAB_CATALOG = {
       status: "live"
     }
 
-    /* ---- Entries below are examples of how the grouping works.
-            Delete them, or replace them as you build each one. ----
+    /* ---- The entry below is the worked example of an experiment described
+            in a spec rather than coded. Its files are still in the repository
+            (experiments/hall-effect/spec.json); uncomment this to list it.
 
     ,{
       id: "hall-effect",
@@ -54,25 +58,12 @@ window.LAB_CATALOG = {
       semester: "Semester I",
       course: "General Physics Laboratory III",
       subject: "Solid state physics",
-      tags: ["semiconductor", "magnetic field", "carrier density"],
-      duration: "2 h",
-      summary: "Not built yet.",
-      thumb: null,
-      status: "planned"
-    },
-    {
-      id: "planck-constant-photocell",
-      title: "Planck's constant from the photoelectric effect",
-      number: 2,
-      programme: "B.Sc. Physics",
-      semester: "Semester IV",
-      course: "Modern Physics Laboratory",
-      subject: "Quantum physics",
-      tags: ["photoelectric", "stopping potential"],
+      tags: ["semiconductor", "magnetic field", "carrier density", "Hall voltage"],
       duration: "90 min",
-      summary: "Not built yet.",
+      summary: "Pass a known current through a germanium slab in a magnetic field, measure the Hall voltage against field, and obtain the Hall coefficient, the carrier concentration and the sign of the majority carrier.",
       thumb: null,
-      status: "planned"
+      engine: "spec",
+      status: "live"
     }
 
     ---- */
