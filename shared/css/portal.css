@@ -6,7 +6,7 @@
 .portal-head {
   border-bottom: 1px solid var(--rule);
   background: var(--panel);
-  padding: 34px 34px 26px;
+  padding: clamp(22px, 3.4vw, 44px) var(--gutter) clamp(18px, 2.4vw, 30px);
 }
 .portal-head h1 { font-size: 2rem; margin-bottom: 6px; max-width: 22ch; }
 .portal-head .place { color: var(--ink-2); font-size: .95rem; margin: 0 0 4px; }
@@ -14,7 +14,7 @@
 
 .filters {
   display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end;
-  padding: 18px 34px;
+  padding: 14px var(--gutter);
   border-bottom: 1px solid var(--rule);
   background: var(--panel-2);
   position: sticky; top: 0; z-index: 4;
@@ -28,7 +28,16 @@
 .filters input { min-width: 230px; }
 .filters .count { margin-left: auto; font-family: var(--mono); font-size: .8rem; color: var(--ink-2); }
 
-.catalog { padding: 26px 34px 80px; max-width: 1080px; }
+.catalog {
+  padding: clamp(20px, 2.4vw, 34px) var(--gutter) 80px;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+
+/* Wide screens: two experiments abreast rather than one long column */
+@media (min-width: 1180px) {
+  .course-group .entries { display: grid; grid-template-columns: repeat(auto-fill, minmax(520px, 1fr)); gap: 0 34px; }
+}
 
 .course-group { margin-bottom: 34px; }
 .course-group > h2 {
@@ -38,13 +47,13 @@
 .course-group .meta { font-size: .8rem; color: var(--ink-3); margin: 4px 0 14px; }
 
 .entry {
-  display: grid; grid-template-columns: 224px minmax(0, 1fr);
+  display: grid; grid-template-columns: clamp(150px, 16vw, 232px) minmax(0, 1fr);
   gap: 18px; align-items: start;
   padding: 16px 0; border-bottom: 1px solid var(--rule-2);
 }
 .entry:last-child { border-bottom: 0; }
 .entry .shot {
-  display: block; width: 224px; height: 84px; overflow: hidden;
+  display: block; width: 100%; aspect-ratio: 8 / 3; height: auto; overflow: hidden;
   background: var(--plate); border-radius: 2px;
 }
 .entry .shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -67,13 +76,15 @@
 
 .portal-foot {
   border-top: 1px solid var(--rule); background: var(--panel);
-  padding: 20px 34px 40px; font-size: .85rem; color: var(--ink-2);
+  padding: 20px var(--gutter) 40px; font-size: .85rem; color: var(--ink-2);
 }
+.portal-foot p { max-width: var(--measure); }
 .portal-foot p { max-width: 70ch; }
 
 @media (max-width: 760px) {
-  .portal-head, .filters, .catalog, .portal-foot { padding-left: 16px; padding-right: 16px; }
-  .entry { grid-template-columns: 1fr; }
-  .entry .shot { width: 100%; height: 96px; }
+  .entry { grid-template-columns: 1fr; gap: 10px; }
+  .entry .shot { aspect-ratio: 16 / 5; }
   .filters { position: static; }
+  .filters label, .filters select, .filters input { width: 100%; min-width: 0; }
+  .filters .count { margin-left: 0; }
 }

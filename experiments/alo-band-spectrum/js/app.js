@@ -17,6 +17,14 @@
     pick: [],               // indices of the 3 Hg lines used for Hartmann
     hart: null,             // {lam0, C, d0}
     bands: {},              // "vu,vl" -> reading in cm
+    work: {                 // everything below this line is the student's arithmetic
+      hart: { lam0: "", C: "", d0: "" },
+      lam: {},              // "vu,vl" -> wavelength in A, worked out by hand
+      nu: {},               // "vu,vl" -> wavenumber in cm-1, worked out by hand
+      up: { dg: ["", "", ""], d2: "", wexe: "", we: "", xe: "" },
+      lo: { dg: ["", "", ""], d2: "", wexe: "", we: "", xe: "" },
+      notes: { hart: "", up: "", lo: "" }
+    },
     answers: { q1: "", q2: "", q3: "", q4: "", errors: "" },
     started: new Date().toISOString()
   };
@@ -67,37 +75,113 @@
     });
   }
 
+  /* Nothing below is worked out for the student. The wavelength of a band
+     is whatever they calculated from their own constants, the wavenumber is
+     whatever they calculated from that wavelength, and the analysis runs on
+     those numbers. The app only ever checks whether one follows from the
+     other, and says so without giving the answer away. */
+
+  function numOf(v) {
+    if (v === undefined || v === null) return NaN;
+    var x = parseFloat(String(v).replace(/[, ]/g, ""));
+    return isFinite(x) ? x : NaN;
+  }
+
+  /* the constants the student worked out, if all three are present */
+  function studentHartmann() {
+    var w = S.work.hart;
+    var lam0 = numOf(w.lam0), C = numOf(w.C), d0 = numOf(w.d0);
+    if (!isFinite(lam0) || !isFinite(C) || !isFinite(d0)) return null;
+    return { lam0: lam0, C: C, d0: d0 };
+  }
+
   function bandEntries() {
     var out = [];
     Object.keys(S.bands).forEach(function (k) {
       var p = k.split(",");
-      var d = S.bands[k];
-      var lam = S.hart ? P.lambdaFromHartmann(S.hart, d) : NaN;
       out.push({
-        vu: +p[0], vl: +p[1], key: k, d: d,
-        lambda: lam, nu: isFinite(lam) ? P.lambdaToNu(lam) : NaN
+        vu: +p[0], vl: +p[1], key: k, d: S.bands[k],
+        lambda: numOf(S.work.lam[k]),
+        nu: numOf(S.work.nu[k])
       });
     });
     out.sort(function (a, b) { return a.d - b.d; });
     return out;
   }
 
+  /* what the app would get from the student's own table — used to check
+     their differences, never shown as a number */
   function analysis() {
     var e = bandEntries().filter(function (b) { return isFinite(b.nu); });
     return e.length ? P.analyse(e) : null;
   }
 
+  /* the constants as the student reports them */
+  function workResults() {
+    function state(w) {
+      return { we: numOf(w.we), wexe: numOf(w.wexe), xe: numOf(w.xe) };
+    }
+    return { upper: state(S.work.up), lower: state(S.work.lo) };
+  }
+
   function progress() {
-    var a = analysis();
+    var r = workResults();
     return {
       setup: !!(S.student.name && S.student.register),
       calib: hgEntries().filter(function (h) { return isFinite(h.d); }).length >= 3,
-      hart: !!S.hart,
-      bands: bandEntries().length >= 10,
-      upper: !!(a && a.upper && isFinite(a.upper.we)),
-      lower: !!(a && a.lower && isFinite(a.lower.we)),
+      hart: !!studentHartmann(),
+      bands: bandEntries().filter(function (b) { return isFinite(b.lambda); }).length >= 10,
+      upper: isFinite(r.upper.we) && isFinite(r.upper.xe),
+      lower: isFinite(r.lower.we) && isFinite(r.lower.xe),
       viva: !!(S.answers.q1 && S.answers.q2 && S.answers.q3 && S.answers.q4)
     };
+  }
+
+  /* ---------- checking the student's arithmetic ----------
+     A check compares what they typed with what follows from their own
+     earlier numbers. It reports agreement, not the expected value.      */
+
+  function check(typed, expected, tol) {
+    var t = numOf(typed);
+    if (!isFinite(t)) return { state: "empty" };
+    if (!isFinite(expected)) return { state: "unknown" };
+    var off = Math.abs(t - expected);
+    return { state: off <= tol ? "ok" : "off", off: off };
+  }
+
+  function mark(c, hint) {
+    if (!c || c.state === "empty") return '<span class="mark"></span>';
+    if (c.state === "unknown") return '<span class="mark">·</span>';
+    if (c.state === "ok") return '<span class="mark ok" title="follows from your own figures">✓</span>';
+    return '<span class="mark off" title="' + esc(hint || "does not follow from your earlier figures — check this one") + '">✗</span>';
+  }
+
+  function tally(list) {
+    var ok = 0, off = 0, empty = 0;
+    list.forEach(function (c) {
+      if (!c || c.state === "empty") empty++;
+      else if (c.state === "ok") ok++;
+      else if (c.state === "off") off++;
+    });
+    return { ok: ok, off: off, empty: empty, total: list.length };
+  }
+
+  function tallyNote(t, what) {
+    if (t.empty === t.total) return '<div class="note">Nothing entered yet. ' + esc(what) + '</div>';
+    if (t.off) return '<div class="note bad">' + t.off + ' of your ' + t.total + ' entries do not follow from your own earlier figures. They are marked ✗ — re-work those and the rest will fall into place.</div>';
+    if (t.empty) return '<div class="note warn">' + t.ok + ' of ' + t.total + ' checked and consistent; ' + t.empty + ' still to do.</div>';
+    return '<div class="note">All ' + t.total + ' entries are consistent with your own figures.</div>';
+  }
+
+  function workBox(key, label) {
+    return '<label class="field"><span>' + esc(label) + '</span>' +
+      '<textarea data-work-note="' + key + '" placeholder="Set out the substitution and the arithmetic as you would in your record book.">' +
+      esc(S.work.notes[key] || "") + '</textarea></label>';
+  }
+
+  function numInput(attr, key, value, extra) {
+    return '<input class="wk" inputmode="decimal" data-' + attr + '="' + key + '" value="' +
+      esc(value === undefined || value === null ? "" : value) + '"' + (extra || "") + '>';
   }
 
   /* ---------- steps ---------- */
@@ -296,7 +380,6 @@
       '<div class="recordbar">' +
       '<button class="primary" data-action="mount">Mount the plate</button>' +
       (last && last !== S.student.register ? '<button class="ghost" data-action="loadlast">Resume ' + esc(last) + '</button>' : '') +
-      '<button class="ghost" data-action="loadfile">Open a saved session file</button>' +
       '<span class="progress" id="mountMsg"></span>' +
       '</div>' +
       '</div>' +
@@ -339,7 +422,7 @@
   }
 
   /* ============================================================
-     Step 3 — Hartmann constants
+     Hartmann constants — worked out by the student
      ============================================================ */
 
   function stepHartmann() {
@@ -356,98 +439,122 @@
         fmt(h.lambda, 2) + ' Å at ' + fmt(h.d, 3) + ' cm</label>';
     }).join("");
 
-    var body = "", chart = "";
-    if (S.pick.length === 3) {
-      var pts = S.pick.map(function (i) { return { lambda: P.HG_LINES[i].lambda, d: S.hg[i] }; })
-        .sort(function (a, b) { return a.lambda - b.lambda; });
-      var h = P.hartmannFromThree(pts[0], pts[1], pts[2]);
-      S.hart = h;
-      if (h) {
-        var res = got.map(function (g) {
-          var lam = P.lambdaFromHartmann(h, g.d);
-          return { g: g, lam: lam, dev: lam - g.lambda };
-        });
-        var rms = Math.sqrt(res.reduce(function (s, r) { return s + r.dev * r.dev; }, 0) / res.length);
-        body = '' +
-          '<div class="card"><h3>Constants from the three chosen lines</h3>' +
-          '<p class="formula">λ = λ<sub>0</sub> + C ⁄ (d − d<sub>0</sub>)</p>' +
-          '<dl class="kv">' +
-          '<dt>λ<sub>0</sub></dt><dd>' + fmt(h.lam0, 2) + ' Å</dd>' +
-          '<dt>C</dt><dd>' + fmt(h.C, 1) + ' Å·cm</dd>' +
-          '<dt>d<sub>0</sub></dt><dd>' + fmt(h.d0, 4) + ' cm</dd>' +
-          '</dl></div>' +
-          '<div class="tablewrap"><table><caption>Table 2 — calibration check on every recorded mercury line</caption>' +
-          '<thead><tr><th>Line</th><th class="num">d (cm)</th><th class="num">λ from Hartmann (Å)</th><th class="num">standard λ (Å)</th><th class="num">difference (Å)</th></tr></thead><tbody>' +
-          res.map(function (r) {
-            return '<tr class="' + (S.pick.indexOf(r.g.i) >= 0 ? "hit" : "") + '"><td>Hg ' + esc(r.g.name) + '</td>' +
-              '<td class="num">' + fmt(r.g.d, 3) + '</td><td class="num">' + fmt(r.lam, 2) + '</td>' +
-              '<td class="num">' + fmt(r.g.lambda, 2) + '</td><td class="num">' + fmt(r.dev, 2) + '</td></tr>';
-          }).join("") +
-          '</tbody></table></div>' +
-          '<div class="note' + (rms > 1.5 ? " warn" : "") + '">Root-mean-square deviation ' + fmt(rms, 2) + ' Å. ' +
-          (rms > 1.5 ? 'That is larger than the plate deserves — re-check the lines marked with the largest difference, or choose three lines that are further apart.' : 'The calibration is good enough to measure the band heads.') +
-          '</div>';
-        chart = '<div class="chartbox" id="calChart"></div>';
+    var chosen = S.pick.map(function (i) { return { i: i, lambda: P.HG_LINES[i].lambda, d: S.hg[i] }; })
+      .sort(function (a, b) { return a.lambda - b.lambda; });
+
+    var method = '<div class="card"><h3>The working</h3>' +
+      '<p>Three lines give three equations in λ<sub>0</sub>, C and d<sub>0</sub>. Eliminate λ<sub>0</sub> by subtracting them in pairs:</p>' +
+      '<p class="formula">λ₁ − λ₂ = C [ 1/(d₁ − d₀) − 1/(d₂ − d₀) ],  λ₂ − λ₃ = C [ 1/(d₂ − d₀) − 1/(d₃ − d₀) ]</p>' +
+      '<p>Divide one by the other and C cancels, leaving one equation in d<sub>0</sub> alone:</p>' +
+      '<p class="formula">(λ₁ − λ₂)(d₃ − d₂) ⁄ (λ₂ − λ₃)(d₂ − d₁) = (d₃ − d₀) ⁄ (d₁ − d₀) = R</p>' +
+      '<p class="formula">d₀ = (R d₁ − d₃) ⁄ (R − 1)</p>' +
+      '<p>Put d<sub>0</sub> back into the first equation for C, then into λ = λ<sub>0</sub> + C ⁄ (d − d<sub>0</sub>) for λ<sub>0</sub>. Work to four decimal places in d<sub>0</sub>: the constants are sensitive to it.</p>' +
+      (chosen.length === 3 ? '<div class="tablewrap"><table><caption>Your three equations</caption>' +
+        '<thead><tr><th>Line</th><th class="num">λ (Å)</th><th class="num">d (cm)</th></tr></thead><tbody>' +
+        chosen.map(function (c, k) {
+          return '<tr><td>' + ["λ₁, d₁", "λ₂, d₂", "λ₃, d₃"][k] + '</td><td class="num">' +
+            fmt(c.lambda, 2) + '</td><td class="num">' + fmt(c.d, 3) + '</td></tr>';
+        }).join("") + '</tbody></table></div>' : "") +
+      '</div>';
+
+    var h = studentHartmann();
+    var entry = '<div class="card"><h3>Your constants</h3>' +
+      '<p class="formula">λ = λ₀ + C ⁄ (d − d₀)</p>' +
+      '<div class="wkrow"><label>λ₀ (Å) ' + numInput("hart", "lam0", S.work.hart.lam0) + '</label>' +
+      '<label>C (Å·cm) ' + numInput("hart", "C", S.work.hart.C) + '</label>' +
+      '<label>d₀ (cm) ' + numInput("hart", "d0", S.work.hart.d0) + '</label></div>' +
+      workBox("hart", "Your working") + '</div>';
+
+    var test = "", chart = "";
+    if (h) {
+      var rows = got.map(function (g) {
+        var lam = P.lambdaFromHartmann(h, g.d);
+        return { g: g, lam: lam, dev: lam - g.lambda, used: S.pick.indexOf(g.i) >= 0 };
+      });
+      var used = rows.filter(function (r) { return r.used; });
+      var worstUsed = Math.max.apply(null, used.map(function (r) { return Math.abs(r.dev); }));
+      var rms = Math.sqrt(rows.reduce(function (a, r) { return a + r.dev * r.dev; }, 0) / rows.length);
+
+      test = '<div class="tablewrap"><table><caption>Table 2 — your constants applied to every line you measured</caption>' +
+        '<thead><tr><th>Line</th><th class="num">d (cm)</th><th class="num">λ from your constants (Å)</th><th class="num">standard λ (Å)</th><th class="num">difference (Å)</th></tr></thead><tbody>' +
+        rows.map(function (r) {
+          return '<tr class="' + (r.used ? "hit" : "") + '"><td>Hg ' + esc(r.g.name) + (r.used ? " (used)" : "") + '</td>' +
+            '<td class="num">' + fmt(r.g.d, 3) + '</td><td class="num">' + fmt(r.lam, 2) + '</td>' +
+            '<td class="num">' + fmt(r.g.lambda, 2) + '</td><td class="num">' + fmt(r.dev, 2) + '</td></tr>';
+        }).join("") + '</tbody></table></div>';
+
+      if (worstUsed > 0.5) {
+        test += '<div class="note bad">Your constants do not reproduce the three lines you solved them from — the largest miss is ' +
+          fmt(worstUsed, 2) + ' Å. That is an arithmetic slip rather than a measuring error: check d₀ first, since everything else follows from it.</div>';
+      } else if (rms > 1.5) {
+        test += '<div class="note warn">The three lines you used come back correctly, so the algebra is right, but the others are out by ' +
+          fmt(rms, 2) + ' Å r.m.s. Either one of the other readings is wrong, or your three lines sit too close together to fix the curve.</div>';
+      } else {
+        test += '<div class="note">The three lines you solved from come back to within ' + fmt(worstUsed, 2) +
+          ' Å, and the lines you did not use to within ' + fmt(rms, 2) + ' Å r.m.s. The calibration is sound; carry these constants forward.</div>';
       }
-    } else {
-      body = '<div class="note warn">Choose exactly three lines. Widely separated lines give the most reliable constants.</div>';
-      S.hart = null;
+      chart = '<div class="chartbox" id="calChart"></div>';
     }
 
     return '<h2>Hartmann constants</h2>' +
-      '<p>Hartmann\'s formula describes the dispersion of a prism instrument with three constants. Pick three mercury lines and they are fixed; every other line then becomes a test of the calibration.</p>' +
-      '<div class="card"><h3>Lines used for the calibration</h3>' + boxes + '</div>' +
-      body + chart + nav();
+      '<p>Hartmann\'s formula describes the dispersion of a prism instrument with three constants. Solve for them yourself from three of your mercury readings — the app will not do it for you. Once you enter them, every line you measured becomes a test of your arithmetic.</p>' +
+      '<div class="card"><h3>Lines to solve from</h3>' + boxes +
+      '<p style="margin:10px 0 0;font-size:.88rem;color:var(--ink-2)">Pick three, as far apart as the plate allows.</p></div>' +
+      method + entry + test + chart + nav();
   }
 
   /* ============================================================
-     Step 4 — band heads
+     Band heads — measure, then convert by hand
      ============================================================ */
 
   function stepHeads() {
-    if (!S.hart) {
-      return '<h2>AlO band heads</h2><div class="note warn">Find the Hartmann constants first — without them a comparator reading cannot be turned into a wavelength.</div>' + nav();
+    var h = studentHartmann();
+    if (!h) {
+      return '<h2>AlO band heads</h2><div class="note warn">Work out your Hartmann constants first — without them a comparator reading cannot be turned into a wavelength.</div>' + nav();
     }
     var req = requiredBands(), ext = extraBands();
+    var checks = [];
 
-    function rowsFor(list, optional) {
+    function rowsFor(list) {
       return list.map(function (b) {
         var k = b.vu + "," + b.vl;
         var d = S.bands[k];
-        var lam = isFinite(d) ? P.lambdaFromHartmann(S.hart, d) : NaN;
-        var nu = isFinite(lam) ? P.lambdaToNu(lam) : NaN;
         var v = isFinite(d) ? P.vernier(d) : null;
+        var expect = isFinite(d) ? P.lambdaFromHartmann(h, d) : NaN;
+        var c = isFinite(d) ? check(S.work.lam[k], expect, 0.8) : null;
+        if (isFinite(d)) checks.push(c);
         return '<tr class="' + (isFinite(d) ? "" : "pending") + '">' +
           '<td>(' + b.vu + ", " + b.vl + ')</td>' +
           '<td class="num">' + (b.dv > 0 ? "+" : "") + b.dv + '</td>' +
           '<td class="num">' + (v ? fmt(v.msr, 2) : "—") + '</td>' +
           '<td class="num">' + (v ? v.vsd : "—") + '</td>' +
           '<td class="num">' + (isFinite(d) ? fmt(d, 3) : "—") + '</td>' +
-          '<td class="num">' + fmt(lam, 2) + '</td>' +
-          '<td class="num">' + fmt(nu, 1) + '</td>' +
+          '<td class="num">' + (isFinite(d) ? numInput("lam", k, S.work.lam[k]) + " " + mark(c, "this λ does not follow from your constants and this reading") : "—") + '</td>' +
           '<td><button class="ghost" data-action="recordBand" data-k="' + k + '">' + (isFinite(d) ? "Re-record" : "Record") + '</button>' +
           (isFinite(d) ? ' <button class="link" data-action="clearBand" data-k="' + k + '">clear</button>' : '') + '</td>' +
           '</tr>';
       }).join("");
     }
 
+    var head = '<thead><tr><th>Band (v′, v″)</th><th class="num">Δv</th><th class="num">M.S.R. (cm)</th><th class="num">V.S.D.</th><th class="num">d (cm)</th><th class="num">λ (Å), your calculation</th><th>Action</th></tr></thead>';
+    var body = '<div class="tablewrap"><table><caption>Table 3 — band heads needed for the Deslandre table (v′ and v″ up to 3)</caption>' +
+      head + '<tbody>' + rowsFor(req) + '</tbody></table></div>' +
+      '<details><summary>Weaker bands with v′ or v″ above 3 (optional, they extend the table)</summary>' +
+      '<div class="tablewrap" style="margin-top:10px"><table>' + head +
+      '<tbody>' + rowsFor(ext) + '</tbody></table></div></details>';
+
     var done = bandEntries().length;
     return '' +
       '<h2>AlO band heads</h2>' +
       '<p>Each band is shaded to the red: a sharp edge on the violet side, fading away towards longer wavelength. Set the crosswire on that sharp edge — that is the band head. The five groups on the plate are the sequences Δv = +2, +1, 0, −1, −2; within a group the bands run in order of v′.</p>' +
+      '<p>Record the reading, then substitute it into <em>your</em> constants and enter the wavelength you get. Keep two decimal places: the differences you take later are worth a few cm⁻¹, and rounding here will swamp them.</p>' +
+      '<p class="formula">λ = ' + fmt(h.lam0, 2) + ' + (' + fmt(h.C, 1) + ') ⁄ (d − ' + fmt(h.d0, 4) + ')</p>' +
       '<div class="progress" style="margin-bottom:10px">' + done + ' of ' + req.length + ' bands of the main block recorded</div>' +
-      '<div class="tablewrap"><table><caption>Table 3 — band heads needed for the Deslandre table (v′ and v″ up to 3)</caption>' +
-      '<thead><tr><th>Band (v′, v″)</th><th class="num">Δv</th><th class="num">M.S.R. (cm)</th><th class="num">V.S.D.</th><th class="num">d (cm)</th><th class="num">λ (Å)</th><th class="num">ν̃ (cm⁻¹)</th><th>Action</th></tr></thead>' +
-      '<tbody>' + rowsFor(req) + '</tbody></table></div>' +
-      '<details><summary>Weaker bands with v′ or v″ above 3 (optional, they extend the table)</summary>' +
-      '<div class="tablewrap" style="margin-top:10px"><table>' +
-      '<thead><tr><th>Band (v′, v″)</th><th class="num">Δv</th><th class="num">M.S.R. (cm)</th><th class="num">V.S.D.</th><th class="num">d (cm)</th><th class="num">λ (Å)</th><th class="num">ν̃ (cm⁻¹)</th><th>Action</th></tr></thead>' +
-      '<tbody>' + rowsFor(ext, true) + '</tbody></table></div></details>' +
-      nav();
+      body + tallyNote(tally(checks), "Record a head, then work out its wavelength.") + nav();
   }
 
   /* ============================================================
-     Step 5 — Deslandre tables
+     Deslandre tables — the student converts to wavenumbers
      ============================================================ */
 
   function stepDeslandre() {
@@ -460,83 +567,132 @@
     });
     vus.sort(function (a, b) { return a - b; }); vls.sort(function (a, b) { return a - b; });
 
-    function table(valueOf, caption, dp) {
-      var h = '<tr><th>v′ \\ v″</th>' + vls.map(function (v) { return '<th class="num">' + v + '</th>'; }).join("") + '</tr>';
+    var checks = [];
+
+    function grid(cellFor, caption) {
+      var head = '<tr><th>v′ \\ v″</th>' + vls.map(function (v) { return '<th class="num">' + v + '</th>'; }).join("") + '</tr>';
       var body = vus.map(function (vu) {
         return '<tr><th class="num">' + vu + '</th>' + vls.map(function (vl) {
           var hit = e.filter(function (b) { return b.vu === vu && b.vl === vl; })[0];
-          if (!hit) return '<td class="empty"></td>';
-          return '<td class="num' + (vu === vl ? " diag" : "") + '">' + fmt(valueOf(hit), dp) + '</td>';
+          return hit ? cellFor(hit, vu === vl) : '<td class="empty"></td>';
         }).join("") + '</tr>';
       }).join("");
-      return '<div class="tablewrap"><table class="des"><caption>' + caption + '</caption><thead>' + h + '</thead><tbody>' + body + '</tbody></table></div>';
+      return '<div class="tablewrap"><table class="des"><caption>' + caption + '</caption><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>';
     }
+
+    var wavelengths = grid(function (b, diag) {
+      return '<td class="num' + (diag ? " diag" : "") + '">' + fmt(b.lambda, 2) + '</td>';
+    }, "Table 4 — your band heads in Å");
+
+    var wavenumbers = grid(function (b, diag) {
+      var expect = isFinite(b.lambda) ? 1e8 / b.lambda : NaN;
+      var c = check(S.work.nu[b.key], expect, 2);
+      checks.push(c);
+      return '<td class="num' + (diag ? " diag" : "") + '">' + numInput("nu", b.key, S.work.nu[b.key]) + " " + mark(c, "check the conversion for this band") + '</td>';
+    }, "Table 5 — the same heads in cm⁻¹, converted by you");
 
     return '<h2>Deslandre tables</h2>' +
       '<p>Every measured band head takes its place in the array. Bands along a diagonal share the same Δv and form a sequence; a row or a column is a progression.</p>' +
-      table(function (b) { return b.lambda; }, "Table 4 — band heads in Å", 1) +
-      table(function (b) { return b.nu; }, "Table 5 — band heads in cm⁻¹", 1) +
+      wavelengths +
+      '<p>The differences you need are differences of energy, not of wavelength, so the table has to be converted. Work each one out and enter it:</p>' +
+      '<p class="formula">ν̃ (cm⁻¹) = 10⁸ ⁄ λ (Å)</p>' +
+      wavenumbers +
+      tallyNote(tally(checks), "Convert each wavelength in the table above.") +
       '<div class="note">Read across a row: the spacing between neighbouring columns is a vibrational quantum of the lower state. Read down a column: the spacing between neighbouring rows belongs to the upper state.</div>' +
       nav();
   }
 
   /* ============================================================
-     Steps 6 and 7 — the two electronic states
+     The two electronic states — differences taken by hand
      ============================================================ */
 
   function stateStep(which) {
     var a = analysis();
-    var name = which === "upper" ? "upper state B²Σ⁺" : "lower state X²Σ⁺";
+    var key = which === "upper" ? "up" : "lo";
+    var w = S.work[key];
     var pr = which === "upper" ? "′" : "″";
-    var lit = which === "upper" ? { we: P.LIT.we_u, wexe: P.LIT.wexe_u, xe: P.LIT.xe_u } : { we: P.LIT.we_l, wexe: P.LIT.wexe_l, xe: P.LIT.xe_l };
+    var lit = which === "upper"
+      ? { we: P.LIT.we_u, wexe: P.LIT.wexe_u, xe: P.LIT.xe_u }
+      : { we: P.LIT.we_l, wexe: P.LIT.wexe_l, xe: P.LIT.xe_l };
+    var along = which === "upper" ? "column" : "row";
+
     if (!a || !a[which].first.length) {
-      return '<h2>' + (which === "upper" ? "Upper" : "Lower") + ' state</h2><div class="note warn">Not enough bands yet. You need at least three successive ' + (which === "upper" ? "rows" : "columns") + ' of the Deslandre table.</div>';
+      return '<div class="note warn">Not enough of the wavenumber table is filled in yet. You need at least three successive ' +
+        (which === "upper" ? "rows" : "columns") + ' of it before the differences can be taken.</div>';
     }
     var st = a[which];
-    var idxLabel = which === "upper" ? "v″" : "v′";
+    var checks = [];
 
-    var first = '<div class="tablewrap"><table><caption>First differences ΔG' + pr + '(v + ½) in cm⁻¹</caption>' +
-      '<thead><tr><th>Interval</th><th>Values from each ' + (which === "upper" ? "column" : "row") + ' (' + idxLabel + ')</th><th class="num">Mean</th><th class="num">Spread</th></tr></thead><tbody>' +
-      st.first.map(function (f) {
-        return '<tr><td>ΔG' + pr + '(' + f.v + ' + ½) = G' + pr + '(' + (f.v + 1) + ') − G' + pr + '(' + f.v + ')</td>' +
-          '<td class="num">' + f.terms.map(function (t) {
-            return (t.vl !== undefined ? t.vl : t.vu) + ": " + fmt(t.value, 1);
-          }).join("  ") + '</td>' +
-          '<td class="num">' + fmt(f.value, 1) + '</td><td class="num">' + (isFinite(f.sd) ? "± " + fmt(f.sd, 1) : "—") + '</td></tr>';
-      }).join("") + '</tbody></table></div>';
+    /* the pairs the student should subtract, straight from their own table */
+    var pairs = st.first.slice(0, 3).map(function (f, i) {
+      var terms = f.terms.map(function (t) {
+        var idx = t.vl !== undefined ? t.vl : t.vu;
+        return (which === "upper" ? "v″ = " : "v′ = ") + idx;
+      });
+      return { i: i, v: f.v, expected: f.value, terms: terms };
+    });
 
-    var second = '<div class="tablewrap"><table><caption>Second differences Δ²G' + pr + ' = 2ω<sub>e</sub>' + pr + 'x<sub>e</sub>' + pr + '</caption>' +
-      '<thead><tr><th>Difference</th><th class="num">Value (cm⁻¹)</th></tr></thead><tbody>' +
-      st.second.map(function (s) {
-        return '<tr><td>ΔG' + pr + '(' + s.from + ' + ½) − ΔG' + pr + '(' + s.to + ' + ½)</td><td class="num">' + fmt(s.value, 2) + '</td></tr>';
-      }).join("") +
-      '<tr><th>Mean</th><th class="num">' + fmt(st.twoWexe, 2) + '</th></tr>' +
+    var rows = pairs.map(function (p) {
+      var c = check(w.dg[p.i], p.expected, 2.0);
+      checks.push(c);
+      return '<tr><td>ΔG' + pr + '(' + p.v + ' + ½) = G' + pr + '(' + (p.v + 1) + ') − G' + pr + '(' + p.v + ')</td>' +
+        '<td>' + esc(p.terms.join(",  ")) + '</td>' +
+        '<td class="num">' + numInput("dg-" + key, String(p.i), w.dg[p.i]) + " " + mark(c, "this difference does not match your own table") + '</td></tr>';
+    }).join("");
+
+    var dgs = w.dg.map(numOf);
+    var expD2 = (isFinite(dgs[0]) && isFinite(dgs[1])) ? dgs[0] - dgs[1] : NaN;
+    var cD2 = check(w.d2, expD2, 1.0);
+    var expWexe = isFinite(numOf(w.d2)) ? numOf(w.d2) / 2 : NaN;
+    var cWexe = check(w.wexe, expWexe, 0.6);
+    var expWe = (isFinite(dgs[0]) && isFinite(numOf(w.d2))) ? dgs[0] + numOf(w.d2) : NaN;
+    var cWe = check(w.we, expWe, 1.5);
+    var expXe = (isFinite(numOf(w.wexe)) && isFinite(numOf(w.we)) && numOf(w.we)) ? numOf(w.wexe) / numOf(w.we) : NaN;
+    var cXe = check(w.xe, expXe, 0.0004);
+    checks.push(cD2, cWexe, cWe, cXe);
+
+    var second = '<div class="tablewrap"><table><caption>Second difference and the constants</caption>' +
+      '<thead><tr><th>Quantity</th><th>From</th><th class="num">Your value</th></tr></thead><tbody>' +
+      '<tr><td>Δ²G' + pr + ' = ΔG' + pr + '(½) − ΔG' + pr + '(3/2)</td><td>your two differences above</td>' +
+      '<td class="num">' + numInput("d2-" + key, "d2", w.d2) + " " + mark(cD2) + '</td></tr>' +
+      '<tr><td>ω<sub>e</sub>' + pr + 'x<sub>e</sub>' + pr + ' = Δ²G' + pr + ' ⁄ 2</td><td>half of the line above</td>' +
+      '<td class="num">' + numInput("d2-" + key, "wexe", w.wexe) + " " + mark(cWexe) + '</td></tr>' +
+      '<tr><td>ω<sub>e</sub>' + pr + ' = ΔG' + pr + '(½) + 2ω<sub>e</sub>' + pr + 'x<sub>e</sub>' + pr + '</td><td>first difference plus the second difference</td>' +
+      '<td class="num">' + numInput("d2-" + key, "we", w.we) + " " + mark(cWe) + '</td></tr>' +
+      '<tr><td>x<sub>e</sub>' + pr + ' = ω<sub>e</sub>' + pr + 'x<sub>e</sub>' + pr + ' ⁄ ω<sub>e</sub>' + pr + '</td><td>the two lines above</td>' +
+      '<td class="num">' + numInput("d2-" + key, "xe", w.xe) + " " + mark(cXe) + '</td></tr>' +
       '</tbody></table></div>';
 
-    var work = '<div class="card"><h3>Constants</h3>' +
-      '<p class="formula">2ω<sub>e</sub>' + pr + 'x<sub>e</sub>' + pr + ' = ' + fmt(st.twoWexe, 2) + ' cm⁻¹ → ω<sub>e</sub>' + pr + 'x<sub>e</sub>' + pr + ' = ' + fmt(st.wexe, 2) + ' cm⁻¹</p>' +
-      '<p class="formula">ω<sub>e</sub>' + pr + ' = ΔG' + pr + '(½) + 2ω<sub>e</sub>' + pr + 'x<sub>e</sub>' + pr + ' = ' + fmt(st.first[0].value, 1) + ' + ' + fmt(st.twoWexe, 2) + ' = ' + fmt(st.we, 1) + ' cm⁻¹</p>' +
-      '<p class="formula">x<sub>e</sub>' + pr + ' = ω<sub>e</sub>' + pr + 'x<sub>e</sub>' + pr + ' ⁄ ω<sub>e</sub>' + pr + ' = ' + fmt(st.xe, 5) + '</p>' +
-      '<div class="result-strip">' +
-      resultCell("ω<sub>e</sub>" + pr, fmt(st.we, 1) + " cm⁻¹", "literature " + fmt(lit.we, 1)) +
-      resultCell("ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr, fmt(st.wexe, 2) + " cm⁻¹", "literature " + fmt(lit.wexe, 2)) +
-      resultCell("x<sub>e</sub>" + pr, fmt(st.xe, 5), "literature " + fmt(lit.xe, 5)) +
-      '</div></div>';
+    var strip = "";
+    if (isFinite(numOf(w.we))) {
+      strip = '<div class="result-strip">' +
+        resultCell("ω<sub>e</sub>" + pr, fmt(numOf(w.we), 1) + " cm⁻¹", "literature " + fmt(lit.we, 1)) +
+        resultCell("ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr, fmt(numOf(w.wexe), 2) + " cm⁻¹", "literature " + fmt(lit.wexe, 2)) +
+        resultCell("x<sub>e</sub>" + pr, fmt(numOf(w.xe), 5), "literature " + fmt(lit.xe, 5)) +
+        '</div>';
+    }
 
-    return '<h2>Vibrational quanta of the ' + name + '</h2>' + first + second + work;
+    return '<p>Take each difference from your own wavenumber table: subtract two entries in the same ' + along +
+      '. Where a ' + along + ' gives more than one value for the same interval, average them and enter the mean.</p>' +
+      '<div class="tablewrap"><table><caption>First differences ΔG' + pr + '(v + ½), in cm⁻¹</caption>' +
+      '<thead><tr><th>Interval</th><th>Available from ' + (which === "upper" ? "columns" : "rows") + '</th><th class="num">Your value</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div>' +
+      second + strip +
+      tallyNote(tally(checks), "Work down the tables above.") +
+      '<div class="card">' + workBox(key, "Your working — subtractions, averages and the substitution into each formula") + '</div>';
+  }
+
+  function stepUpper() {
+    return '<h2>Vibrational quanta of the upper state B²Σ⁺</h2>' + stateStep("upper") +
+      '<div class="note">Each ΔG′ comes from subtracting two entries in the same column of your wavenumber table, so a column missing a band simply contributes nothing to that average.</div>' + nav();
+  }
+  function stepLower() {
+    return '<h2>Vibrational quanta of the lower state X²Σ⁺</h2>' + stateStep("lower") +
+      '<div class="note">Here the differences run along a row. Note that ν̃ falls as v″ rises, so the difference is the left entry minus the right one.</div>' + nav();
   }
 
   function resultCell(label, value, extra) {
     return '<div><div class="v">' + value + '</div><div class="l">' + label + '</div><div class="e">' + (extra || "") + '</div></div>';
-  }
-
-  function stepUpper() {
-    return stateStep("upper") +
-      '<div class="note">Each ΔG′ is obtained by subtracting two entries in the same column of the Deslandre table, so a column that is missing a band simply contributes nothing.</div>' + nav();
-  }
-  function stepLower() {
-    return stateStep("lower") +
-      '<div class="note">Here the differences are taken along a row. Note that ν̃ falls as v″ rises, so the difference is taken as the left entry minus the right one.</div>' + nav();
   }
 
   /* ============================================================
@@ -545,18 +701,20 @@
 
   function stepGraphs() {
     return '<h2>Graphs</h2>' +
-      '<p>Three plots come out of the measurements. The Birge–Sponer lines are an independent route to the same constants: the intercept is ω<sub>e</sub> and the slope is −2ω<sub>e</sub>x<sub>e</sub>.</p>' +
+      '<p>Three plots come out of your figures. The Birge–Sponer lines are drawn through the first differences you entered, and are an independent check on them: the intercept should be your ω<sub>e</sub> and the slope −2ω<sub>e</sub>x<sub>e</sub>. A point off the line is a difference worth re-working.</p>' +
       '<div id="graphHost"></div>' +
-      '<div class="recordbar noprint">' +
-      '<button class="ghost" data-action="dlsvg" data-g="spectrum">Download spectrum (SVG)</button>' +
-      '<button class="ghost" data-action="dlpng" data-g="spectrum">Spectrum (PNG)</button>' +
-      '<button class="ghost" data-action="dlsvg" data-g="bsUpper">Birge–Sponer upper (SVG)</button>' +
-      '<button class="ghost" data-action="dlsvg" data-g="bsLower">Birge–Sponer lower (SVG)</button>' +
-      '<button class="ghost" data-action="dlplate">Plate image (PNG)</button>' +
-      '</div>' + nav();
+      '<div class="note">These go into the report as they stand. Everything you download from this site is a single PDF, so there is nothing to collect separately.</div>' +
+      nav();
   }
 
   var GRAPHS = {};
+
+  /* a straight line through the student's own differences */
+  function fitOf(points) {
+    var f = P.linfit(points);
+    if (!f) return null;
+    return { slope: f.m, intercept: f.c, r2: f.r2, we: f.c, wexe: -f.m / 2 };
+  }
 
   function buildGraphs() {
     var host = el("graphHost");
@@ -566,7 +724,7 @@
     GRAPHS = { calibration: GRAPHS.calibration };
     calChartSVG();
 
-    if (S.hart && plate && e.length) {
+    if (studentHartmann() && plate && e.length) {
       var lam0 = Math.min.apply(null, e.map(function (b) { return b.lambda; })) - 60;
       var lam1 = Math.max.apply(null, e.map(function (b) { return b.lambda; })) + 90;
       GRAPHS.spectrum = root.Charts.spectrumChart({
@@ -582,11 +740,16 @@
 
     if (a) {
       ["upper", "lower"].forEach(function (w) {
-        var st = a[w], bs = st.birgeSponer;
+        var st = a[w];
+        var typed = (w === "upper" ? S.work.up : S.work.lo).dg
+          .map(function (v, i) { return [i + 1, numOf(v)]; })
+          .filter(function (p) { return isFinite(p[1]); });
+        var pts = typed.length >= 2 ? typed : st.first.map(function (f) { return [f.v + 1, f.value]; });
+        var bs = typed.length >= 2 ? fitOf(typed) : st.birgeSponer;
         if (!bs) return;
         var key = w === "upper" ? "bsUpper" : "bsLower";
         GRAPHS[key] = root.Charts.scatterFit({
-          points: st.first.map(function (f) { return [f.v + 1, f.value]; }),
+          points: pts,
           fit: bs,
           xlabel: "v + 1",
           ylabel: "ΔG(v + ½)  (cm⁻¹)",
@@ -603,13 +766,14 @@
   }
 
   function calChartSVG() {
-    if (!S.hart) { GRAPHS.calibration = null; return; }
+    var H = studentHartmann();
+    if (!H) { GRAPHS.calibration = null; return; }
     var pts = hgEntries().filter(function (h) { return isFinite(h.d); }).map(function (h) { return [h.d, h.lambda]; });
     GRAPHS.calibration = root.Charts.calibrationChart({
       points: pts,
-      curve: function (d) { return P.lambdaFromHartmann(S.hart, d); },
+      curve: function (d) { return P.lambdaFromHartmann(H, d); },
       title: "Hartmann dispersion curve",
-      annotation: "λ0 = " + fmt(S.hart.lam0, 1) + " Å, C = " + fmt(S.hart.C, 0) + ", d0 = " + fmt(S.hart.d0, 3) + " cm"
+      annotation: "λ0 = " + fmt(H.lam0, 1) + " Å, C = " + fmt(H.C, 0) + ", d0 = " + fmt(H.d0, 3) + " cm"
     });
   }
 
@@ -624,27 +788,30 @@
      ============================================================ */
 
   function stepResult() {
-    var a = analysis();
-    if (!a) return '<h2>Result</h2><div class="note warn">Nothing to report yet.</div>' + nav();
-    return '<h2>Result</h2>' + resultTable(a) +
+    var r = workResults();
+    if (!isFinite(r.upper.we) && !isFinite(r.lower.we)) {
+      return '<h2>Result</h2><div class="note warn">Work out the constants for at least one of the states first.</div>' + nav();
+    }
+    return '<h2>Result</h2>' + resultTable(r) +
+      '<p>Both quanta should be a few hundred cm⁻¹ up on a thousand, with the ground state the larger of the two, and both anharmonicities small, positive and around half a per cent of ω<sub>e</sub>. If yours are not, the fault is upstream: go back to the difference that is marked ✗.</p>' +
       '<div class="card"><label class="field"><span>Sources of error and remarks</span>' +
-      '<textarea data-answer="errors" placeholder="Setting the crosswire on a shaded band head, choice of mercury lines, the assumption that the second difference is constant…">' + esc(S.answers.errors) + '</textarea></label></div>' +
+      '<textarea data-answer="errors" placeholder="Setting the crosswire on a shaded band head, choice of mercury lines, rounding in the conversion to cm⁻¹, the assumption that the second difference is constant…">' + esc(S.answers.errors) + '</textarea></label></div>' +
       nav();
   }
 
-  function resultTable(a) {
+  function resultTable(r) {
     function row(label, got, lit, dp) {
       var err = isFinite(got) && lit ? Math.abs(got - lit) / lit * 100 : NaN;
       return '<tr><td>' + label + '</td><td class="num">' + fmt(got, dp) + '</td><td class="num">' + fmt(lit, dp) + '</td><td class="num">' + fmt(err, 1) + '</td></tr>';
     }
     return '<div class="tablewrap"><table><caption>Table 6 — vibrational constants of AlO</caption>' +
-      '<thead><tr><th>Quantity</th><th class="num">Measured</th><th class="num">Literature</th><th class="num">Difference (%)</th></tr></thead><tbody>' +
-      row("ω<sub>e</sub>′ (cm⁻¹), upper state B²Σ⁺", a.upper.we, P.LIT.we_u, 1) +
-      row("ω<sub>e</sub>′x<sub>e</sub>′ (cm⁻¹)", a.upper.wexe, P.LIT.wexe_u, 2) +
-      row("x<sub>e</sub>′", a.upper.xe, P.LIT.xe_u, 5) +
-      row("ω<sub>e</sub>″ (cm⁻¹), lower state X²Σ⁺", a.lower.we, P.LIT.we_l, 1) +
-      row("ω<sub>e</sub>″x<sub>e</sub>″ (cm⁻¹)", a.lower.wexe, P.LIT.wexe_l, 2) +
-      row("x<sub>e</sub>″", a.lower.xe, P.LIT.xe_l, 5) +
+      '<thead><tr><th>Quantity</th><th class="num">Your value</th><th class="num">Literature</th><th class="num">Difference (%)</th></tr></thead><tbody>' +
+      row("ω<sub>e</sub>′ (cm⁻¹), upper state B²Σ⁺", r.upper.we, P.LIT.we_u, 1) +
+      row("ω<sub>e</sub>′x<sub>e</sub>′ (cm⁻¹)", r.upper.wexe, P.LIT.wexe_u, 2) +
+      row("x<sub>e</sub>′", r.upper.xe, P.LIT.xe_u, 5) +
+      row("ω<sub>e</sub>″ (cm⁻¹), lower state X²Σ⁺", r.lower.we, P.LIT.we_l, 1) +
+      row("ω<sub>e</sub>″x<sub>e</sub>″ (cm⁻¹)", r.lower.wexe, P.LIT.wexe_l, 2) +
+      row("x<sub>e</sub>″", r.lower.xe, P.LIT.xe_l, 5) +
       '</tbody></table></div>';
   }
 
@@ -673,17 +840,25 @@
      ============================================================ */
 
   function stepReport() {
+    var p = progress();
+    var missing = [];
+    if (!p.hart) missing.push("the Hartmann constants");
+    if (!p.bands) missing.push("at least ten band heads with their wavelengths");
+    if (!p.upper) missing.push("the constants for the upper state");
+    if (!p.lower) missing.push("the constants for the lower state");
+    if (!p.viva) missing.push("the four questions");
+
     return '<h2>Report and submission</h2>' +
+      (missing.length ? '<div class="note warn">Still outstanding: ' + esc(missing.join("; ")) + '. You can still download what you have.</div>' : '') +
       '<div class="recordbar noprint" style="margin-bottom:14px">' +
-      '<button class="primary" data-action="print">Print or save as PDF</button>' +
-      '<button class="ghost" data-action="dlhtml">Download the report (HTML)</button>' +
-      '<button class="ghost" data-action="dlcsv">Download readings (CSV)</button>' +
-      '<button class="ghost" data-action="dljson">Save session file</button>' +
+      '<button class="primary" data-action="dlpdf">Download the report (PDF)</button>' +
+      '<button class="ghost" data-action="print">Print this page</button>' +
       (root.VirtualLab && root.VirtualLab.configured()
-        ? '<button class="primary" data-action="submit">Submit to the department sheet</button>'
+        ? '<button class="primary" data-action="submit">Submit to the department</button>'
         : '<span class="progress">Online submission is not configured for this site.</span>') +
       '<span class="progress" id="submitMsg"></span>' +
       '</div>' +
+      '<div class="note">The PDF is the record: your readings, your working, your tables and your graphs. It is the only file this site produces, so keep it — and hand it in even if you also submit online.</div>' +
       '<div id="reportHost" class="report"></div>';
   }
 
@@ -811,7 +986,6 @@
       if (last && load(last)) { plate = P.makePlate(last); view.setPlate(plate); render(); toast("Session restored for " + last + "."); }
       return;
     }
-    if (a === "loadfile") { openSession(); return; }
     if (a === "fillall") { fillAll(); return; }
     if (a === "recordHg") { S.hg[+t.dataset.i] = recordCurrent(); save(); render(); return; }
     if (a === "clearHg") { delete S.hg[+t.dataset.i]; save(); render(); return; }
@@ -824,31 +998,39 @@
     if (a === "recordBand") { S.bands[t.dataset.k] = recordCurrent(); save(); render(); return; }
     if (a === "clearBand") { delete S.bands[t.dataset.k]; save(); render(); return; }
     if (a === "print") { root.print(); return; }
-    if (a === "dlhtml") { root.Report.downloadHTML(); return; }
-    if (a === "dlcsv") { root.Report.downloadCSV(); return; }
-    if (a === "dljson") { root.Report.download("alo-session-" + (S.student.register || "x") + ".json", JSON.stringify(S, null, 2), "application/json"); return; }
+    if (a === "dlpdf") { root.Report.downloadPDF(el("submitMsg")); return; }
     if (a === "submit") { root.Report.submit(el("submitMsg")); return; }
-    if (a === "dlsvg") {
-      var g = GRAPHS[t.dataset.g];
-      if (g) root.Report.download(t.dataset.g + ".svg", g, "image/svg+xml");
-      return;
-    }
-    if (a === "dlpng") {
-      var gp = GRAPHS[t.dataset.g];
-      if (gp) root.Charts.svgToPng(gp, 2).then(function (url) { root.Report.downloadDataURL(t.dataset.g + ".png", url); });
-      return;
-    }
-    if (a === "dlplate") {
-      root.Report.downloadDataURL("plate-" + (S.student.register || "x") + ".png", el("plateCanvas").toDataURL("image/png"));
-      return;
-    }
   }
 
   function onInput(ev) {
-    var t = ev.target;
-    if (t.dataset.student) { S.student[t.dataset.student] = t.value; save(); return; }
-    if (t.dataset.answer) { S.answers[t.dataset.answer] = t.value; save(); return; }
+    var t = ev.target, d = t.dataset;
+    if (d.student) { S.student[d.student] = t.value; save(); return; }
+    if (d.answer) { S.answers[d.answer] = t.value; save(); return; }
     if (t.id === "drive") { view.setCursor(+t.value, false); syncReadout(); return; }
+
+    /* the student's own arithmetic: store it, then re-render so the
+       consistency marks and everything downstream keep up */
+    if (d.hart) { S.work.hart[d.hart] = t.value; save(); reRender(t); return; }
+    if (d.lam) { S.work.lam[d.lam] = t.value; save(); reRender(t); return; }
+    if (d.nu) { S.work.nu[d.nu] = t.value; save(); reRender(t); return; }
+    if (d.dgUp !== undefined) { S.work.up.dg[+d.dgUp] = t.value; save(); reRender(t); return; }
+    if (d.dgLo !== undefined) { S.work.lo.dg[+d.dgLo] = t.value; save(); reRender(t); return; }
+    if (d.d2Up) { S.work.up[d.d2Up] = t.value; save(); reRender(t); return; }
+    if (d.d2Lo) { S.work.lo[d.d2Lo] = t.value; save(); reRender(t); return; }
+    if (d.workNote) { S.work.notes[d.workNote] = t.value; save(); return; }
+  }
+
+  /* Re-rendering on every keystroke would move the caret, so the marks are
+     refreshed when the field is left, or when the value looks finished. */
+  var reTimer = null;
+  function reRender(input) {
+    clearTimeout(reTimer);
+    var id = input.dataset ? JSON.stringify(input.dataset) : "";
+    reTimer = setTimeout(function () {
+      render();
+      var again = document.querySelector('[data-' + Object.keys(input.dataset)[0].replace(/[A-Z]/g, function (c) { return "-" + c.toLowerCase(); }) + '="' + input.dataset[Object.keys(input.dataset)[0]] + '"]');
+      if (again && again.focus) { again.focus(); if (again.setSelectionRange) { var v = again.value.length; try { again.setSelectionRange(v, v); } catch (e) {} } }
+    }, 900);
   }
 
   function onKey(ev) {
@@ -864,32 +1046,27 @@
     plate.hg.forEach(function (l, i) { S.hg[i] = l.d; });
     S.pick = [0, 3, 6];
     var pts = S.pick.map(function (i) { return { lambda: P.HG_LINES[i].lambda, d: S.hg[i] }; });
-    S.hart = P.hartmannFromThree(pts[0], pts[1], pts[2]);
-    plate.bands.forEach(function (b) { S.bands[b.vu + "," + b.vl] = b.d; });
+    var H = P.hartmannFromThree(pts[0], pts[1], pts[2]);
+    S.work.hart = { lam0: H.lam0.toFixed(2), C: H.C.toFixed(1), d0: H.d0.toFixed(4) };
+    plate.bands.forEach(function (b) {
+      var k = b.vu + "," + b.vl;
+      S.bands[k] = b.d;
+      var lam = P.lambdaFromHartmann(H, b.d);
+      S.work.lam[k] = lam.toFixed(2);
+      S.work.nu[k] = (1e8 / lam).toFixed(1);
+    });
+    var a = analysis();
+    ["upper", "lower"].forEach(function (w) {
+      var key = w === "upper" ? "up" : "lo", st = a[w];
+      S.work[key].dg = [0, 1, 2].map(function (i) { return st.first[i] ? st.first[i].value.toFixed(1) : ""; });
+      var d2 = numOf(S.work[key].dg[0]) - numOf(S.work[key].dg[1]);
+      S.work[key].d2 = d2.toFixed(2);
+      S.work[key].wexe = (d2 / 2).toFixed(2);
+      S.work[key].we = (numOf(S.work[key].dg[0]) + d2).toFixed(1);
+      S.work[key].xe = (numOf(S.work[key].wexe) / numOf(S.work[key].we)).toFixed(5);
+    });
     save(); render();
-    toast("Demonstration data filled in.");
-  }
-
-  function openSession() {
-    var inp = document.createElement("input");
-    inp.type = "file"; inp.accept = ".json,application/json";
-    inp.onchange = function () {
-      var f = inp.files[0];
-      if (!f) return;
-      var r = new FileReader();
-      r.onload = function () {
-        try {
-          var obj = JSON.parse(r.result);
-          Object.assign(S, obj);
-          plate = P.makePlate(S.student.register);
-          view.setPlate(plate);
-          save(); render();
-          toast("Session loaded.");
-        } catch (e) { toast("That file could not be read as a session.", "bad"); }
-      };
-      r.readAsText(f);
-    };
-    inp.click();
+    toast("Demonstration data filled in, arithmetic and all.");
   }
 
   /* ---------- boot ---------- */
@@ -943,6 +1120,18 @@
     get graphs() { if (!GRAPHS.spectrum) buildGraphs(); return GRAPHS; },
     buildGraphs: buildGraphs,
     analysis: analysis,
+    workResults: workResults,
+    studentHartmann: studentHartmann,
+    work: function () { return S.work; },
+    /* a picture of the plate, with the readings the student took marked on it */
+    plateImage: function (source) {
+      if (!view || !plate) return null;
+      var marks = source === "hg"
+        ? hgEntries().filter(function (h) { return isFinite(h.d); })
+          .map(function (h) { return { d: h.d, label: fmt(h.lambda, 0) }; })
+        : bandEntries().map(function (b) { return { d: b.d, label: "(" + b.vu + "," + b.vl + ")" }; });
+      return view.snapshot({ source: source, marks: marks });
+    },
     bandEntries: bandEntries,
     hgEntries: hgEntries,
     resultTable: resultTable,

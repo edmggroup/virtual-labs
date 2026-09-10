@@ -22,9 +22,12 @@
   "use strict";
 
   var CFG = root.VLAB_CONFIG || {};
-  var EXP = root.EXPERIMENT || {};
+  /* read at call time: an experiment built from a spec sets this once the
+     spec has been fetched, which is after this file loads */
+  function exp() { return root.EXPERIMENT || {}; }
 
   function envelope(payload) {
+    var EXP = exp();
     return {
       schema: 1,
       submittedAt: new Date().toISOString(),
@@ -79,6 +82,7 @@
   function masthead(el, opts) {
     if (!el) return;
     opts = opts || {};
+    var EXP = exp();
     el.innerHTML =
       '<a class="home" href="' + (CFG.HOME || "../../index.html") + '">← All experiments</a>' +
       '<h1>' + (EXP.title || "") + '</h1>' +
@@ -89,7 +93,7 @@
 
   root.VirtualLab = {
     config: CFG,
-    experiment: EXP,
+    get experiment() { return exp(); },
     envelope: envelope,
     submit: submit,
     configured: configured,

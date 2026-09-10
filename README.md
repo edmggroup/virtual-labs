@@ -11,16 +11,25 @@ it as it stands. See [DEPLOY.md](DEPLOY.md) to put it online and
 
 ```
 index.html                     the portal: filter by programme, course or subject
+admin/                         the instructor's console
 data/catalog.js                the list of experiments — edit this to add one
 shared/css/base.css            design tokens, buttons, tables, forms, print rules
 shared/css/portal.css          the front page
 shared/js/config.js            site settings, including the one submission address
 shared/js/lab-submit.js        the common envelope and the single POST
+shared/js/pdf.js               a small PDF writer — no dependencies
+shared/js/report-doc.js        one block list → preview, PDF and Google Doc
 shared/js/portal.js            filtering and grouping on the front page
+shared/js/pwa.js               service-worker registration and the install prompt
+shared/js/formula.js           the little expression language specs are written in
+shared/js/lab-engine.js        runs an experiment that was described rather than coded
+shared/js/plot.js              scatter plot with a fitted line
+experiments/_generic/          the page that runs a described experiment
 experiments/<id>/              one folder per experiment, self-contained
 experiments/_template/         a working skeleton to copy
-apps-script/Code.gs            the backend: one Sheet tab per experiment
-tests/site.js                  portal filtering + the template, in jsdom
+apps-script/Code.gs            the backend: roster, assignments, submissions
+manifest.webmanifest, sw.js    installable, and works offline
+tests/site.js                  portal, admin, template and PWA files, in jsdom
 .nojekyll                      stops GitHub Pages hiding folders that begin with _
 ```
 
@@ -34,8 +43,38 @@ measures, which is what keeps them independent.
 | Experiment | Programme | Course | Subject |
 |---|---|---|---|
 | [AlO band spectrum](experiments/alo-band-spectrum/) — vibrational constants from the B²Σ⁺ → X²Σ⁺ system | M.Sc. Physics | General Physics Laboratory V | Molecular spectroscopy |
+| [Hall coefficient](experiments/_generic/?id=hall-effect) — carrier concentration of a semiconductor, described in a spec rather than coded | M.Sc. Physics | General Physics Laboratory III | Solid state physics |
 
 ![The simulated plate](experiments/alo-band-spectrum/docs/plate.png)
+
+## Four things the site guarantees
+
+**The student does the arithmetic.** Experiments are built to check working, not to replace it.
+In the AlO experiment the student solves Hartmann's three equations themselves, converts every
+wavelength to a wavenumber themselves, and takes every difference themselves; the app marks each
+entry ✓ or ✗ against what follows from their *own* earlier figures, and never shows the value it
+expected. A wrong entry is flagged along with everything downstream of it, so the error is
+traceable rather than mysterious.
+
+**One file leaves the site, and it is a PDF.** No CSV, no HTML, no session files, no separate
+image downloads. The record carries the spectrum itself — the plate as the student measured it,
+with their own settings marked on it — alongside the readings, the working, the tables and every
+graph. It is generated in the browser by `shared/js/pdf.js`, a small base-14 PDF writer with
+Greek and superscripts, so ωe′, Σ⁺, Å and ν̃ all set correctly without embedding a font.
+`experiments/alo-band-spectrum/docs/sample-report.pdf` is a real one.
+
+**Instructors have a console, and can add experiments from it.** `admin/` manages batches,
+students, groups, assignments and submissions — and its experiment builder turns a description
+into a working experiment for any subject, with no code and no deploy. You give it the
+observation table, a simulated instrument if the reading is not typed, the formulae behind each
+quantity, and the questions; it checks every formula and every name before it will publish.
+Published experiments live in the sheet and run on the generic engine at `experiments/_generic/`.
+
+**It installs, and it fits.** A manifest and a service worker make the site an app on a phone or
+tablet, and everything but submission works with no signal. The layout is fluid rather than
+fixed: gutters, rail and type scale with the viewport, the portal runs two experiments abreast on
+a wide screen, the step rail becomes a scrolling strip on a phone, and safe-area insets are
+respected on notched devices.
 
 ## How submission works
 
@@ -57,6 +96,21 @@ later, and writes one line per submission to a master log. A new experiment need
 
 Submission is optional. With `APPS_SCRIPT_URL` left empty the button disappears and students
 download or print their reports instead.
+
+## The admin console
+
+`admin/` is the instructor's side. It reads and writes the same Google Sheet through the Apps
+Script deployment, guarded by the `ADMIN_KEY` you set in the script — kept in the browser tab
+only, never written to disk.
+
+| Panel | What it does |
+|---|---|
+| Connection | endpoint and admin key, tested before anything else opens |
+| Batches | the groups you teach: name, programme, course, semester |
+| Students | register number, name, batch, group; add one, or paste a list |
+| Assignments | which experiment a batch is doing, in practice or assessed mode, with the link to share |
+| Submissions | read from the sheet, filtered by experiment, with a list of who has not submitted and a CSV export |
+| Catalog builder | fills in a catalog entry and downloads `catalog.js` with it added |
 
 ## Instructor switches
 

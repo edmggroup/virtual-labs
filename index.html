@@ -2,9 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Virtual Physics Laboratory</title>
 <meta name="description" content="Simulated physics laboratory experiments, grouped by programme, course and subject.">
+<meta name="theme-color" content="#0e6e6b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&family=Spectral:wght@500;600&display=swap" rel="stylesheet">
@@ -25,6 +31,7 @@
   <label><span>Subject</span><select id="fSubject"></select></label>
   <label><span>Search</span><input id="fSearch" type="search" placeholder="band spectrum, Hall, calibration…"></label>
   <span class="count" id="count"></span>
+  <button class="ghost" id="installBtn" hidden style="margin-left:12px">Install</button>
 </div>
 
 <main class="catalog" id="catalog"></main>
@@ -33,11 +40,15 @@
   <p>Each experiment runs entirely in the browser and keeps your readings under your register
      number, so you can close the tab and come back. Every experiment ends with a report you can
      print, download or submit.</p>
-  <p><strong>Instructors:</strong> the assessed link beside an experiment turns off the on-screen
+  <p>On a phone or tablet, use "Add to home screen" (or the Install button above) and the laboratory
+     opens like an app and keeps working with no signal — everything but submission runs on the device.</p>
+  <p><strong>Instructors:</strong> <a href="admin/">the admin console</a> handles batches, students,
+     assignments and submissions. the assessed link beside an experiment turns off the on-screen
      identification aids. Adding an experiment means one folder under <code>experiments/</code> and
      one entry in <code>data/catalog.js</code> — see ADDING-AN-EXPERIMENT.md in the repository.</p>
 </footer>
 
+<script src="shared/js/pwa.js"></script>
 <script src="shared/js/config.js"></script>
 <script src="data/catalog.js"></script>
 <script src="shared/js/portal.js"></script>

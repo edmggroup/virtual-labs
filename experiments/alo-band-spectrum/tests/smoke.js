@@ -37,6 +37,7 @@ const errors = [];
 window.addEventListener('error', e => errors.push('window error: ' + e.message));
 
 const SCRIPTS = ['../../shared/js/config.js', 'js/meta.js', '../../shared/js/lab-submit.js',
+  '../../shared/js/pdf.js', '../../shared/js/report-doc.js',
   'js/physics.js', 'js/spectrum.js', 'js/charts.js', 'js/report.js', 'js/app.js'];
 for (const f of SCRIPTS) {
   try { window.eval(fs.readFileSync(path.join(root, f), 'utf8')); }
@@ -97,13 +98,30 @@ try {
   const rep = window.document.getElementById('reportHost').innerHTML;
   console.log('report length:', rep.length);
   fs.writeFileSync(path.join(__dirname, '..', 'docs', 'sample-report.html'),
-    '<!doctype html><meta charset=utf-8><link rel=stylesheet href=../css/style.css><div class=report>' + rep + '</div>');
+    '<!doctype html><meta charset=utf-8><link rel=stylesheet href=../../../shared/css/base.css><div class=report>' + rep + '</div>');
 
-  // exports
-  const csvBefore = errors.length;
-  click('[data-action="dlcsv"]');
-  click('[data-action="dlhtml"]');
-  console.log('exports ran without throwing:', errors.length === csvBefore);
+  // the student's arithmetic must come back consistent after the demo fill
+  let ticks = 0, crosses = 0;
+  for (const i of [5, 6, 7, 8, 9]) {
+    rail()[i].dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    const body = window.document.getElementById('steps').innerHTML;
+    ticks += (body.match(/mark ok/g) || []).length;
+    crosses += (body.match(/mark off/g) || []).length;
+  }
+  console.log('consistency marks — ok:', ticks, 'off:', crosses);
+  if (!ticks) errors.push('no consistency checks passed after the demo fill');
+  if (crosses) errors.push(crosses + ' checks failed on data the app generated itself');
+
+  // a wrong entry must be caught
+  rail()[8].dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  const dg = window.document.querySelector('[data-dg-up="0"]');
+  dg.value = '900'; dg.dispatchEvent(new window.Event('input', { bubbles: true }));
+  window.LabState.state.work.up.dg[0] = '900';
+  rail()[8].dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  const bad = (window.document.getElementById('steps').innerHTML.match(/mark off/g) || []).length;
+  console.log('after typing a wrong first difference, entries flagged:', bad);
+  if (!bad) errors.push('a wrong difference was not flagged');
+  window.LabState.state.work.up.dg[0] = String(window.LabState.analysis().upper.first[0].value.toFixed(1));
 
   // comparator interaction
   rail()[6].dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
@@ -115,5 +133,26 @@ try {
   errors.push('walk: ' + e.stack.split('\n').slice(0, 4).join(' | '));
 }
 
+// the PDF the student downloads (graphs need a canvas, so text and tables only)
+(async () => {
+  try {
+    const blocks = window.Report.blocks({ graphs: false });
+    const doc = await window.ReportDoc.pdf(blocks, { title: 'test', header: 'h', footer: 'f' });
+    const bytes = doc.bytes();
+    const head = String.fromCharCode(...bytes.slice(0, 8));
+    console.log('report blocks:', blocks.length, '| pdf bytes:', bytes.length, '| starts with', JSON.stringify(head.slice(0, 5)));
+    if (!head.startsWith('%PDF-')) errors.push('the PDF does not start with a PDF header');
+    if (bytes.length < 3000) errors.push('the PDF looks too small to hold the record');
+    /* the illustrated sample is written by report-preview.js, which can
+       rasterise the figures; this one only proves the text and tables */
+  } catch (e) {
+    errors.push('pdf: ' + e.message);
+  }
+  finish();
+})();
+
+function finish() {
+
 if (errors.length) { console.log('\nERRORS:'); errors.forEach(e => console.log(' - ' + e)); process.exit(1); }
 console.log('\nno errors');
+}

@@ -126,12 +126,71 @@
   /* ---------- canvas plumbing ---------- */
 
   function prep(canvas) {
+    /* An off-screen canvas has no layout size: it is already the size it
+       wants to be, so take its own width and height and draw at 1:1. */
+    if (canvas.__offscreen || !canvas.clientWidth) {
+      return { ctx: canvas.getContext("2d"), w: canvas.width, h: canvas.height, dpr: 1 };
+    }
     var dpr = Math.min(root.devicePixelRatio || 1, 2);
     var w = Math.max(60, Math.round(canvas.clientWidth * dpr));
     var h = Math.max(20, Math.round(canvas.clientHeight * dpr));
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
     return { ctx: canvas.getContext("2d"), w: w, h: h, dpr: dpr };
   }
+
+  /* ---------- a picture of the plate for the report ----------
+     The record ought to show the spectrum the student actually
+     measured, with the settings they took marked on it. This
+     renders the whole plate off-screen at print resolution and
+     ticks off the readings.                                   */
+
+  PlateView.prototype.snapshot = function (opts) {
+    opts = opts || {};
+    if (!this.plate) return null;
+    var cv = document.createElement("canvas");
+    cv.__offscreen = true;
+    cv.width = opts.width || 1700;
+    cv.height = opts.height || 300;
+
+    var wasSource = this.source, wasSpan = this.span;
+    if (opts.source) this.source = opts.source;
+    this.span = null;
+
+    var fr = this.fullRange();
+    this._plate(cv, fr.d0, fr.d1, false);
+
+    var ctx = cv.getContext("2d");
+    var W = cv.width;
+    function X(d) { return (d - fr.d0) / (fr.d1 - fr.d0) * W; }
+
+    (opts.marks || []).forEach(function (m) {
+      if (m.d < fr.d0 || m.d > fr.d1) return;
+      var x = X(m.d);
+      ctx.strokeStyle = "rgba(255,120,110,.95)";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(x, 0); ctx.lineTo(x, cv.height * 0.14); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x, cv.height * 0.72); ctx.lineTo(x, cv.height * 0.86); ctx.stroke();
+      if (m.label) {
+        ctx.font = "bold 15px 'IBM Plex Mono', monospace";
+        ctx.fillStyle = "rgba(255,190,185,.98)";
+        ctx.textAlign = "center";
+        ctx.fillText(m.label, x, cv.height * 0.14 + 17);
+        ctx.textAlign = "left";
+      }
+    });
+
+    if (opts.caption) {
+      ctx.font = "14px 'IBM Plex Mono', monospace";
+      ctx.fillStyle = "rgba(200,220,220,.75)";
+      ctx.fillText(opts.caption, 10, 20);
+    }
+
+    this.source = wasSource;
+    this.span = wasSpan;
+    return cv;
+  };
 
   PlateView.prototype.render = function () {
     if (!this.plate) return;

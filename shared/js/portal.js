@@ -40,9 +40,15 @@
     return true;
   }
 
+  function hrefFor(x) {
+    return x.engine === "spec"
+      ? "experiments/_generic/?id=" + encodeURIComponent(x.id)
+      : "experiments/" + x.id + "/";
+  }
+
   function entry(x) {
     var live = x.status !== "planned";
-    var href = "experiments/" + x.id + "/";
+    var href = hrefFor(x);
     var shot = x.thumb
       ? '<span class="shot"><img src="' + esc(x.thumb) + '" alt=""></span>'
       : '<span class="shot blank"></span>';
@@ -60,7 +66,7 @@
       "<p>" + esc(x.summary || "") + "</p>" +
       (live ? '<div class="actions">' +
         '<a href="' + esc(href) + '">Open the experiment</a>' +
-        '<a href="' + esc(href) + '?exam=1">Assessed version</a>' +
+        '<a href="' + esc(href) + (href.indexOf("?") >= 0 ? "&" : "?") + 'exam=1">Assessed version</a>' +
         "</div>" : "") +
       "</div></article>";
   }
@@ -88,7 +94,7 @@
     el("catalog").innerHTML = groups.map(function (g) {
       return '<section class="course-group"><h2>' + esc(g.course || "Other experiments") + "</h2>" +
         '<div class="meta">' + esc([g.programme, g.semester].filter(Boolean).join("  ·  ")) + "</div>" +
-        g.items.map(entry).join("") + "</section>";
+        '<div class="entries">' + g.items.map(entry).join("") + "</div></section>";
     }).join("");
   }
 
@@ -98,6 +104,7 @@
     el("sitePlace").textContent = [CFG.DEPARTMENT, CFG.INSTITUTION].filter(Boolean).join(", ");
     el("siteTagline").textContent = CFG.TAGLINE || "";
 
+    published();
     fill(el("fProgramme"), uniq(CAT.map(function (x) { return x.programme; })), "All programmes");
     fill(el("fCourse"), uniq(CAT.map(function (x) { return x.course; })), "All courses");
     fill(el("fSubject"), uniq(CAT.map(function (x) { return x.subject; })), "All subjects");
@@ -111,6 +118,40 @@
     el("fSearch").addEventListener("input", function () { state.q = this.value.trim(); render(); });
 
     render();
+  }
+
+  /* Experiments written in the admin console live in the sheet rather than in
+     this file. Pull them in if an endpoint is configured; the page works
+     perfectly well without them. */
+  function published() {
+    if (!CFG.APPS_SCRIPT_URL) return;
+    var cb = "vlabcat" + Date.now();
+    var timer = setTimeout(cleanup, 12000);
+    function cleanup() {
+      clearTimeout(timer);
+      delete root[cb];
+      if (tag.parentNode) tag.parentNode.removeChild(tag);
+    }
+    root[cb] = function (res) {
+      cleanup();
+      if (!res || !res.ok || !res.experiments) return;
+      var have = {};
+      CAT.forEach(function (x) { have[x.id] = true; });
+      res.experiments.forEach(function (x) {
+        if (have[x.id]) return;
+        x.engine = "spec";
+        x.status = x.status || "live";
+        CAT.push(x);
+      });
+      fill(el("fProgramme"), uniq(CAT.map(function (x) { return x.programme; })), "All programmes");
+      fill(el("fCourse"), uniq(CAT.map(function (x) { return x.course; })), "All courses");
+      fill(el("fSubject"), uniq(CAT.map(function (x) { return x.subject; })), "All subjects");
+      render();
+    };
+    var tag = document.createElement("script");
+    tag.src = CFG.APPS_SCRIPT_URL + "?action=catalog&callback=" + cb;
+    tag.onerror = cleanup;
+    document.head.appendChild(tag);
   }
 
   root.addEventListener("DOMContentLoaded", boot);

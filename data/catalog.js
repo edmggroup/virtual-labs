@@ -20,6 +20,9 @@
      duration    rough working time, shown on the card
      summary     one or two sentences, no marketing
      thumb       image relative to the site root, or null
+     engine      omit for an experiment with its own folder of code;
+                 "spec" for one described in a spec.json or written
+                 in the admin console, which the generic engine runs
      status      "live" or "planned" — planned entries are shown
                  greyed out and are not clickable
    ============================================================ */
@@ -40,6 +43,22 @@ window.LAB_CATALOG = {
       duration: "2 h",
       summary: "Measure the band heads of the AlO B²Σ⁺ → X²Σ⁺ system on a photographic plate with a travelling comparator, calibrate against mercury lines, and obtain ωe and xe for both electronic states.",
       thumb: "experiments/alo-band-spectrum/docs/plate.png",
+      status: "live"
+    },
+
+    {
+      id: "hall-effect",
+      title: "Hall coefficient and carrier concentration of a semiconductor",
+      number: 3,
+      programme: "M.Sc. Physics",
+      semester: "Semester I",
+      course: "General Physics Laboratory III",
+      subject: "Solid state physics",
+      tags: ["semiconductor", "magnetic field", "carrier density", "Hall voltage"],
+      duration: "90 min",
+      summary: "Pass a known current through a germanium slab in a magnetic field, measure the Hall voltage against field, and obtain the Hall coefficient, the carrier concentration and the sign of the majority carrier.",
+      thumb: null,
+      engine: "spec",
       status: "live"
     }
 

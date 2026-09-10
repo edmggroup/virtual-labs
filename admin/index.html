@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Admin — Virtual Physics Laboratory</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0e6e6b">
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&family=Spectral:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../shared/css/base.css">
+<link rel="stylesheet" href="../shared/css/portal.css">
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+
+<header class="masthead">
+  <a class="home" href="../index.html">← The laboratory</a>
+  <h1>Admin</h1>
+  <span class="sub">batches, students, assignments, submissions and the catalog</span>
+  <span class="who" id="connState">not connected</span>
+</header>
+
+<div class="shell">
+  <nav class="rail" id="rail" aria-label="Admin sections"></nav>
+  <main class="work">
+    <div id="panel"></div>
+  </main>
+</div>
+
+<div id="toast" class="note" role="status" style="display:none;position:fixed;bottom:16px;right:16px;z-index:30;max-width:380px"></div>
+
+<script src="../shared/js/config.js"></script>
+<script src="../data/catalog.js"></script>
+<script src="../shared/js/formula.js"></script>
+<script src="../shared/js/pwa.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>
