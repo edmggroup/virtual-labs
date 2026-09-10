@@ -20,6 +20,11 @@
 
 var SETTINGS = {
   MASTER_SHEET: 'All submissions',
+  REPEAT_SHEET: 'Repeat attempts',
+  /* A register number may submit an experiment once. A later attempt is not
+     thrown away and does not overwrite the first: it is filed on its own tab
+     for you to look at. Set this false to accept resubmissions normally. */
+  ONE_PER_STUDENT: true,
   CREATE_DOC: true,                    // a formatted record in Drive per submission
   DOC_FOLDER: 'Virtual lab reports',   // created on first use
   NOTIFY: '',                          // instructor email, or '' for no mail
@@ -43,8 +48,10 @@ var ROSTER = {
 var BATCH_HEADERS = ['Batch', 'Programme', 'Course', 'Semester', 'Notes'];
 var STUDENT_HEADERS = ['Register', 'Name', 'Batch', 'Group', 'Email', 'Active'];
 var ASSIGN_HEADERS = ['Batch', 'Experiment', 'Mode', 'Opens', 'Due', 'Notes'];
+/* 'Engine' is appended rather than inserted so that sheets created by an
+   earlier version keep working: every other column stays where it was. */
 var EXPERIMENT_HEADERS = ['Id', 'Title', 'Programme', 'Semester', 'Course', 'Subject',
-  'Number', 'Duration', 'Summary', 'Status', 'Updated', 'Spec'];
+  'Number', 'Duration', 'Summary', 'Status', 'Updated', 'Spec', 'Engine'];
 
 var BASE_HEADERS = ['Timestamp', 'Name', 'Register', 'Batch', 'Exp. date', 'Partner'];
 var TAIL_HEADERS = ['Report', 'Raw JSON'];
@@ -67,6 +74,12 @@ function doPost(e) {
       d.student = stu;
     } else if (SETTINGS.ROSTER_ONLY) {
       return json({ ok: false, error: 'That register number is not on the roster.' });
+    }
+
+    /* one submission per candidate per experiment */
+    if (SETTINGS.ONE_PER_STUDENT && alreadySubmitted(exp, stu.register)) {
+      repeat(d);
+      return json({ ok: false, error: 'That register number has already submitted this experiment.' });
     }
 
     var url = SETTINGS.CREATE_DOC ? createDoc(d) : '';
@@ -98,8 +111,15 @@ function doGet(e) {
       case 'roster': out = needKey(q) || { ok: true, roster: readRoster() }; break;
       case 'submissions': out = needKey(q) || { ok: true, submissions: readSubmissions(q) }; break;
       case 'enrolled': out = { ok: true, enrolled: findStudent(q.register) ? true : false }; break;
+      case 'submitted':
+        out = { ok: true, submitted: alreadySubmitted({ id: q.experiment }, q.register) };
+        break;
       case 'catalog': out = { ok: true, experiments: publishedExperiments() }; break;
       case 'spec': out = specFor(q.id); break;
+      case 'meta': out = metaFor(q.id); break;
+      case 'catalogRows':
+        out = needKey(q) || { ok: true, experiments: experimentRows() };
+        break;
       case 'ping':
       default:
         out = { ok: true, service: 'virtual-lab', tabs: tabCounts(), rosterOnly: SETTINGS.ROSTER_ONLY };
@@ -197,18 +217,36 @@ function experimentRows() {
   return readTab(ROSTER.EXPERIMENTS, EXPERIMENT_HEADERS);
 }
 
-/** The card the portal shows. The spec itself is not sent — it can be long. */
+/** What the portal shows. The spec itself is not sent — it can be long.
+    Rows with no spec are classification overrides for an experiment whose
+    code lives in the repository; the portal applies them to its own entry. */
 function publishedExperiments() {
   return experimentRows()
     .filter(function (r) { return String(r.Status).toLowerCase() === 'live'; })
-    .map(function (r) {
-      return {
-        id: String(r.Id), title: String(r.Title), programme: String(r.Programme),
-        semester: String(r.Semester), course: String(r.Course), subject: String(r.Subject),
-        number: r.Number === '' ? null : Number(r.Number), duration: String(r.Duration),
-        summary: String(r.Summary), thumb: null, status: 'live'
-      };
-    });
+    .map(function (r) { return card(r); });
+}
+
+function card(r) {
+  return {
+    id: String(r.Id), title: String(r.Title), programme: String(r.Programme),
+    semester: String(r.Semester), course: String(r.Course), subject: String(r.Subject),
+    number: r.Number === '' ? null : Number(r.Number), duration: String(r.Duration),
+    summary: String(r.Summary), thumb: null, status: 'live',
+    engine: String(r.Engine || (r.Spec ? 'spec' : 'coded')),
+    hasSpec: !!String(r.Spec || '')
+  };
+}
+
+/** Where an experiment is filed — asked for by the experiment page itself,
+    so a report header and a submission carry whatever you set here. */
+function metaFor(id) {
+  var rows = experimentRows();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i].Id).trim() === String(id || '').trim()) {
+      return { ok: true, meta: card(rows[i]) };
+    }
+  }
+  return { ok: true, meta: null };
 }
 
 /** The full description an experiment page needs. Public: students open it. */
@@ -270,6 +308,21 @@ function adminAction(d) {
         spec.summary || '', p.status || 'draft', new Date(), JSON.stringify(spec)
       ]);
       return { ok: true, id: spec.id };
+    }
+    case 'saveClassification': {
+      if (!p.id) return { ok: false, error: 'Which experiment?' };
+      var was = null, rows = experimentRows();
+      for (var i = 0; i < rows.length; i++) {
+        if (String(rows[i].Id).trim() === String(p.id).trim()) { was = rows[i]; break; }
+      }
+      upsert(ROSTER.EXPERIMENTS, EXPERIMENT_HEADERS, 'Id', [
+        p.id, p.title || '', p.programme || '', p.semester || '', p.course || '',
+        p.subject || '', p.number == null ? '' : p.number, p.duration || '',
+        p.summary || '', (was && was.Status) || 'live', new Date(),
+        (was && was.Spec) || '',                    // an existing description is left alone
+        p.engine || (was && was.Engine) || 'coded'
+      ]);
+      return { ok: true, id: p.id };
     }
     case 'publishExperiment':
       setCell(ROSTER.EXPERIMENTS, EXPERIMENT_HEADERS, p.id, 'Status', p.status || 'live');
@@ -399,6 +452,37 @@ function logMaster(d, docUrl) {
   sh.appendRow([new Date(), e.id || '', e.title || '', e.course || '', e.programme || '',
     s.name || '', s.register || '', s.batch || '', docUrl || '']);
   return sh;
+}
+
+/* ---------- has this candidate already submitted? ---------- */
+
+function alreadySubmitted(exp, register) {
+  register = String(register || '').trim();
+  if (!register) return false;
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(tabName(exp || {}));
+  if (!sh || sh.getLastRow() < 2) return false;
+  var head = headers(sh);
+  var col = head.indexOf('Register') + 1;
+  if (col < 1) return false;
+  var values = sh.getRange(2, col, sh.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < values.length; i++) {
+    if (String(values[i][0]).trim() === register) return true;
+  }
+  return false;
+}
+
+/** A second attempt is kept, on its own tab, rather than lost or merged. */
+function repeat(d) {
+  var e = d.experiment || {}, s = d.student || {};
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SETTINGS.REPEAT_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(SETTINGS.REPEAT_SHEET);
+    sh.appendRow(['Timestamp', 'Experiment', 'Name', 'Register', 'Batch', 'Raw JSON']);
+    sh.setFrozenRows(1);
+    sh.getRange(1, 1, 1, 6).setFontWeight('bold');
+  }
+  sh.appendRow([new Date(), e.id || '', s.name || '', s.register || '', s.batch || '', JSON.stringify(d)]);
 }
 
 /* ---------- the student's document ---------- */

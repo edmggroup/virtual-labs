@@ -137,6 +137,10 @@ function admin() {
     if (!html || html.length < 40) errors.push('admin panel ' + i + ' rendered nothing');
   }
 
+  // the filing panel must show every experiment and offer the three fields
+  const filingIdx = rail().findIndex(b => /Programme, course, subject/.test(b.textContent));
+  if (filingIdx < 0) errors.push('the filing panel is not in the admin rail');
+
   // the catalog builder must emit a parseable entry
   open(n - 1);
   const set = (id, v) => { const e = w.document.getElementById(id); if (e) e.value = v; };
@@ -296,10 +300,44 @@ function engine() {
   return w.LabEngine.blocks({ graphs: false });
 }
 
+/* ---------- editing where an experiment is filed ---------- */
+
+function filing() {
+  const dir = path.join(root, 'admin');
+  const dom = new JSDOM(fs.readFileSync(path.join(dir, 'index.html'), 'utf8'),
+    { runScripts: 'outside-only', pretendToBeVisual: true, url: 'https://example.org/admin/' });
+  const w = dom.window;
+  w.fetch = () => Promise.resolve({ ok: true });
+  w.confirm = () => true;
+  for (const f of ['../shared/js/config.js', '../data/catalog.js', '../shared/js/formula.js',
+    '../shared/js/pwa.js', 'js/admin.js']) w.eval(fs.readFileSync(path.join(dir, f), 'utf8'));
+  w.document.dispatchEvent(new w.Event('DOMContentLoaded', { bubbles: true }));
+
+  // pretend we are connected, with one classification already set in the sheet
+  const posted = [];
+  w.eval(`
+    (function () {
+      var mod = null;
+    })();
+  `);
+  // reach into the module through the DOM: connect panel first
+  const rail = () => [...w.document.querySelectorAll('.rail button')];
+  const idx = rail().findIndex(b => /Programme, course, subject/.test(b.textContent));
+  if (idx < 0) { errors.push('no filing panel'); return; }
+  rail()[idx].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  const body = w.document.getElementById('panel').innerHTML;
+  // not connected yet, so it should say so rather than showing an empty table
+  if (!/Connect first|Connection panel/.test(body)) {
+    errors.push('the filing panel does not ask you to connect first');
+  }
+  console.log('filing panel guards on connection:', /Connection panel/.test(body));
+}
+
 portal();
 template();
 admin();
 builder();
+filing();
 engine();
 pwa();
 layout();

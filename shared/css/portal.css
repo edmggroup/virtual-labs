@@ -12,6 +12,8 @@
 .portal-head .place { color: var(--ink-2); font-size: .95rem; margin: 0 0 4px; }
 .portal-head .tagline { color: var(--ink-2); max-width: 62ch; margin: 0; }
 
+.filters[hidden] { display: none; }
+
 .filters {
   display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end;
   padding: 14px var(--gutter);

@@ -77,6 +77,75 @@
 
   function configured() { return !!CFG.APPS_SCRIPT_URL; }
 
+  /* ---------- one submission per candidate ----------
+     A register number is finished with an experiment once it has been
+     submitted. The mark below is only what this browser knows; the
+     real guard is in the sheet, which files a second attempt on a
+     separate tab instead of overwriting the first. */
+
+  function seal(id, register) { return "vlab.submitted." + id + "." + String(register || "").trim(); }
+
+  function markSubmitted(id, register) {
+    try { localStorage.setItem(seal(id, register), new Date().toISOString()); } catch (e) {}
+  }
+  function submittedAt(id, register) {
+    try { return localStorage.getItem(seal(id, register)); } catch (e) { return null; }
+  }
+
+  /* Ask the sheet whether this register number has already submitted.
+     Resolves null when there is no endpoint or it cannot be reached —
+     the caller then falls back to what this browser remembers. */
+  function checkSubmitted(id, register) {
+    if (!CFG.APPS_SCRIPT_URL || !register) return Promise.resolve(null);
+    return new Promise(function (resolve) {
+      var cb = "vlabsub" + Date.now();
+      var timer = setTimeout(function () { cleanup(); resolve(null); }, 8000);
+      function cleanup() {
+        clearTimeout(timer);
+        delete root[cb];
+        if (tag.parentNode) tag.parentNode.removeChild(tag);
+      }
+      root[cb] = function (res) { cleanup(); resolve(res && res.ok ? !!res.submitted : null); };
+      var tag = document.createElement("script");
+      tag.src = CFG.APPS_SCRIPT_URL + "?action=submitted&experiment=" + encodeURIComponent(id) +
+        "&register=" + encodeURIComponent(register) + "&callback=" + cb;
+      tag.onerror = function () { cleanup(); resolve(null); };
+      document.head.appendChild(tag);
+    });
+  }
+
+  /* ---------- where this experiment is filed ----------
+     Programme, course and subject are editable in the admin console, so the
+     page asks for them rather than trusting what is written in its own
+     meta.js. If there is no endpoint, or it cannot be reached, the built-in
+     values stand and nothing waits on the network. */
+
+  function applyMeta(onDone) {
+    var EXP = exp();
+    if (!CFG.APPS_SCRIPT_URL || !EXP.id) { if (onDone) onDone(false); return; }
+    var cb = "vlabmeta" + Date.now();
+    var timer = setTimeout(function () { cleanup(); if (onDone) onDone(false); }, 8000);
+    function cleanup() {
+      clearTimeout(timer);
+      delete root[cb];
+      if (tag.parentNode) tag.parentNode.removeChild(tag);
+    }
+    root[cb] = function (res) {
+      cleanup();
+      var m = res && res.ok && res.meta;
+      if (!m) { if (onDone) onDone(false); return; }
+      ["title", "programme", "course", "subject", "duration"].forEach(function (k) {
+        if (m[k]) EXP[k] = m[k];
+      });
+      if (m.number != null && m.number !== "") EXP.number = m.number;
+      if (onDone) onDone(true);
+    };
+    var tag = document.createElement("script");
+    tag.src = CFG.APPS_SCRIPT_URL + "?action=meta&id=" + encodeURIComponent(EXP.id) + "&callback=" + cb;
+    tag.onerror = function () { cleanup(); if (onDone) onDone(false); };
+    document.head.appendChild(tag);
+  }
+
   /* Shared page furniture: the bar across the top of every
      experiment, with a way back to the list. */
   function masthead(el, opts) {
@@ -97,6 +166,10 @@
     envelope: envelope,
     submit: submit,
     configured: configured,
+    applyMeta: applyMeta,
+    markSubmitted: markSubmitted,
+    submittedAt: submittedAt,
+    checkSubmitted: checkSubmitted,
     masthead: masthead
   };
 

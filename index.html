@@ -23,6 +23,7 @@
   <h1 id="siteTitle">Virtual Physics Laboratory</h1>
   <p class="place" id="sitePlace"></p>
   <p class="tagline" id="siteTagline"></p>
+  <button class="ghost" id="installBtn" hidden style="margin-top:14px">Install on this device</button>
 </header>
 
 <div class="filters">
@@ -31,22 +32,10 @@
   <label><span>Subject</span><select id="fSubject"></select></label>
   <label><span>Search</span><input id="fSearch" type="search" placeholder="band spectrum, Hall, calibration…"></label>
   <span class="count" id="count"></span>
-  <button class="ghost" id="installBtn" hidden style="margin-left:12px">Install</button>
 </div>
 
 <main class="catalog" id="catalog"></main>
 
-<footer class="portal-foot">
-  <p>Each experiment runs entirely in the browser and keeps your readings under your register
-     number, so you can close the tab and come back. Every experiment ends with a report you can
-     print, download or submit.</p>
-  <p>On a phone or tablet, use "Add to home screen" (or the Install button above) and the laboratory
-     opens like an app and keeps working with no signal — everything but submission runs on the device.</p>
-  <p><strong>Instructors:</strong> <a href="admin/">the admin console</a> handles batches, students,
-     assignments and submissions. the assessed link beside an experiment turns off the on-screen
-     identification aids. Adding an experiment means one folder under <code>experiments/</code> and
-     one entry in <code>data/catalog.js</code> — see ADDING-AN-EXPERIMENT.md in the repository.</p>
-</footer>
 
 <script src="shared/js/pwa.js"></script>
 <script src="shared/js/config.js"></script>

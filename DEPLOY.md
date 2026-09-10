@@ -73,6 +73,11 @@ is a `.js` file rather than JSON precisely so that it does.
   edit these tabs by hand; the console reads whatever is there.
 - **All submissions** — one line per submission across the whole site: timestamp, experiment,
   course, student, and a link to their report.
+- **Experiments** — where each experiment is filed (programme, course, subject and the rest),
+  and the full description of any experiment written in the console. Editing this tab by hand
+  works too; the console just saves you the typing.
+- **Repeat attempts** — a register number that submits the same experiment twice. The first
+  record stands; the later one is filed here with its full JSON so nothing is lost.
 - **One tab per experiment**, named after the experiment id. Its columns are built from the keys
   of that experiment's `summary` the first time a submission arrives, and a new key later becomes
   a new column. The last two columns are always the report link and the raw JSON.
@@ -92,7 +97,10 @@ students to download their report as well — that copy cannot be lost.
 ## 3. Running a session
 
 Send students the portal link and let them find the experiment, or link the experiment directly.
-Add `?exam=1` for an assessed session: on-screen identification aids are switched off and locked.
+
+Submitting is final and may be done once per register number. The student's PDF is downloaded
+before anything is sent, and their working is cleared afterwards, so a shared machine is ready
+for the next candidate. Tell students to keep that PDF: it is their copy of the record.
 
 Where an experiment generates per-student data from the register number, as the AlO one does,
 two students who copy each other's readings produce identical raw numbers on plates that are not

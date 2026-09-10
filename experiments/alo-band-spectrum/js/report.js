@@ -231,10 +231,11 @@
       header: (EXP.title || "") + (EXP.number ? "  ·  experiment " + EXP.number : ""),
       footer: [S.student.name, S.student.register].filter(Boolean).join("  ·  ")
     }, "alo-band-spectrum-" + (S.student.register || "record") + ".pdf")
-      .then(function () { if (msgEl) msgEl.textContent = "PDF downloaded."; })
+      .then(function () { if (msgEl) msgEl.textContent = "PDF downloaded."; return true; })
       .catch(function (e) {
         if (msgEl) msgEl.textContent = "The PDF could not be built. Try again, or use the print button.";
         if (root.console) console.error(e);
+        return false;
       });
   }
 
@@ -261,10 +262,39 @@
     return out;
   }
 
+  /* Submitting finishes the experiment. The record goes off, the PDF is
+     put in the student's hands first, and the working is cleared so the
+     next person at this machine starts from a blank plate. Nothing is
+     cleared until the send has actually gone through. */
   function submit(msgEl) {
     if (!root.VirtualLab) { if (msgEl) msgEl.textContent = "Submission library not loaded."; return; }
     var L = root.LabState, S = L.state;
-    root.VirtualLab.submit({
+    if (!S.student.name || !S.student.register) {
+      if (msgEl) msgEl.textContent = "Add your name and register number before submitting.";
+      return;
+    }
+    var ok = root.confirm(
+      "Submit this record?\n\n" +
+      "You can submit once. Your PDF will be downloaded first, and your readings will then be " +
+      "cleared from this browser, so check the report below before you go ahead."
+    );
+    if (!ok) return;
+
+    if (msgEl) msgEl.textContent = "Building your PDF…";
+    downloadPDF(msgEl).then(function (built) {
+      if (!built) {
+        if (msgEl) msgEl.textContent =
+          "Nothing was sent: your PDF could not be built, and submitting would have cleared your work without a copy in your hands. Try the print button, then submit.";
+        return false;
+      }
+      if (msgEl) msgEl.textContent = "Sending…";
+      return sendRecord(msgEl);
+    });
+  }
+
+  function sendRecord(msgEl) {
+    var L = root.LabState, S = L.state;
+    return root.VirtualLab.submit({
       student: S.student,
       summary: summary(),
       data: {
@@ -279,7 +309,12 @@
         answers: S.answers
       },
       report: root.ReportDoc.forBackend(blocks({ graphs: false }))
-    }, msgEl);
+    }, msgEl).then(function (sent) {
+      if (!sent) return false;
+      root.VirtualLab.markSubmitted(EXP.id, S.student.register);
+      L.finish();
+      return true;
+    });
   }
 
   root.Report = {

@@ -7,6 +7,7 @@
 
   var P = root.AlOPhysics;
   var CFG = Object.assign({}, root.VLAB_CONFIG || {}, root.EXPERIMENT || {});
+  var EXP_ID = (root.EXPERIMENT || {}).id || "alo-band-spectrum";
 
   /* ---------- state ---------- */
 
@@ -208,7 +209,14 @@
      ============================================================ */
 
   function stepAim() {
-    return '' +
+    var done = submitted
+      ? '<div class="note"><strong>Submitted.</strong> The record for ' + esc(submitted.register) +
+        ' has gone to the department and the PDF has been downloaded to this device. ' +
+        'Your readings have been cleared, so this page is now a fresh experiment. ' +
+        'A register number can be submitted once: if you open it again with the same number, ' +
+        'the work will not replace what has already been filed.</div>'
+      : "";
+    return done +
       '<h2>Vibrational constants of AlO from its electronic band spectrum</h2>' +
       '<div class="card">' +
       '<h3>Aim</h3>' +
@@ -841,12 +849,26 @@
 
   function stepReport() {
     var p = progress();
+    var seal = root.VirtualLab && S.student.register
+      ? root.VirtualLab.submittedAt(EXP_ID, S.student.register) : null;
     var missing = [];
     if (!p.hart) missing.push("the Hartmann constants");
     if (!p.bands) missing.push("at least ten band heads with their wavelengths");
     if (!p.upper) missing.push("the constants for the upper state");
     if (!p.lower) missing.push("the constants for the lower state");
     if (!p.viva) missing.push("the four questions");
+
+    if (seal) {
+      return '<h2>Report and submission</h2>' +
+        '<div class="note warn">This register number submitted this experiment on ' +
+        esc(String(seal).slice(0, 10)) + '. An experiment may be submitted once, so a second record ' +
+        'will not replace the first — it is filed separately for your instructor to look at. ' +
+        'You can still download the PDF below.</div>' +
+        '<div class="recordbar noprint" style="margin-bottom:14px">' +
+        '<button class="primary" data-action="dlpdf">Download the report (PDF)</button>' +
+        '<span class="progress" id="submitMsg"></span></div>' +
+        '<div id="reportHost" class="report"></div>';
+    }
 
     return '<h2>Report and submission</h2>' +
       (missing.length ? '<div class="note warn">Still outstanding: ' + esc(missing.join("; ")) + '. You can still download what you have.</div>' : '') +
@@ -859,6 +881,7 @@
       '<span class="progress" id="submitMsg"></span>' +
       '</div>' +
       '<div class="note">The PDF is the record: your readings, your working, your tables and your graphs. It is the only file this site produces, so keep it — and hand it in even if you also submit online.</div>' +
+      '<div class="note warn">Submitting is final. You may submit once. Your PDF is downloaded first, then your readings are cleared from this browser and the experiment starts afresh — so read through the record below before you send it.</div>' +
       '<div id="reportHost" class="report"></div>';
   }
 
@@ -973,6 +996,32 @@
     return view.cursor;
   }
 
+  /* ---------- finishing ----------
+     Once a record has been submitted the working is wiped, so the next
+     student at this machine — or the same one opening it again — starts
+     from a blank plate rather than someone else's readings. */
+
+  function finish() {
+    var reg = S.student.register;
+    try { localStorage.removeItem(saveKey()); localStorage.removeItem("aloLab.last"); } catch (e) {}
+    var name = S.student.name;
+    S.student = { name: "", register: "", batch: "", partner: "", date: today() };
+    S.hg = {}; S.pick = []; S.bands = {};
+    S.work = {
+      hart: { lam0: "", C: "", d0: "" }, lam: {}, nu: {},
+      up: { dg: ["", "", ""], d2: "", wexe: "", we: "", xe: "" },
+      lo: { dg: ["", "", ""], d2: "", wexe: "", we: "", xe: "" },
+      notes: { hart: "", up: "", lo: "" }
+    };
+    S.answers = { q1: "", q2: "", q3: "", q4: "", errors: "" };
+    plate = null;
+    submitted = { register: reg, name: name };
+    step = 0;
+    render();
+  }
+
+  var submitted = null;
+
   /* ---------- events ---------- */
 
   function onClick(ev) {
@@ -1072,7 +1121,15 @@
   /* ---------- boot ---------- */
 
   function boot() {
-    if (root.VirtualLab) root.VirtualLab.masthead(el("masthead"));
+    if (root.VirtualLab) {
+      root.VirtualLab.masthead(el("masthead"));
+      root.VirtualLab.applyMeta(function (changed) {
+        if (!changed) return;
+        CFG = Object.assign({}, root.VLAB_CONFIG || {}, root.EXPERIMENT || {});
+        root.VirtualLab.masthead(el("masthead"));
+        render();
+      });
+    }
     demo = /[?&]demo=1/.test(root.location.search);
     var exam = /[?&]exam=1/.test(root.location.search);
     view = new root.PlateView({
@@ -1120,6 +1177,7 @@
     get graphs() { if (!GRAPHS.spectrum) buildGraphs(); return GRAPHS; },
     buildGraphs: buildGraphs,
     analysis: analysis,
+    finish: finish,
     workResults: workResults,
     studentHartmann: studentHartmann,
     work: function () { return S.work; },

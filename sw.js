@@ -11,7 +11,7 @@
    files they already hold.
    ============================================================ */
 
-var CACHE = "vlab-v2";
+var CACHE = "vlab-v5";
 
 var CORE = [
   "./",

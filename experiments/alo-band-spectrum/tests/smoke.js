@@ -133,9 +133,35 @@ try {
   errors.push('walk: ' + e.stack.split('\n').slice(0, 4).join(' | '));
 }
 
+// submitting finishes the experiment: the working must be gone afterwards
+try {
+  const S = window.LabState.state;
+  const before = window.LabState.bandEntries().length;
+  window.confirm = () => true;
+  window.LabState.finish();
+  const after = window.LabState.bandEntries().length;
+  const reg = window.LabState.state.student.register;
+  console.log('after finishing — bands kept:', after, '| register kept:', JSON.stringify(reg));
+  if (before === 0) errors.push('nothing was recorded before the finish test');
+  if (after !== 0) errors.push('readings survived a submission');
+  if (reg !== '') errors.push('the candidate details survived a submission');
+  const notice = window.document.getElementById('steps').innerHTML;
+  if (!/Submitted\./.test(notice)) errors.push('no confirmation shown after submitting');
+  if (!/fresh experiment/.test(notice)) errors.push('the fresh-start notice is missing');
+} catch (e) {
+  errors.push('finish: ' + e.message);
+}
+
 // the PDF the student downloads (graphs need a canvas, so text and tables only)
 (async () => {
   try {
+    // rebuild a record to check the PDF path (the finish test emptied the state)
+    const railBtns = () => window.document.querySelectorAll('.rail button');
+    railBtns()[3].dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    setInput('[data-student="name"]', 'Test Student');
+    setInput('[data-student="register"]', '2447101');
+    click('[data-action="mount"]');
+    click('[data-action="fillall"]');
     const blocks = window.Report.blocks({ graphs: false });
     const doc = await window.ReportDoc.pdf(blocks, { title: 'test', header: 'h', footer: 'f' });
     const bytes = doc.bytes();

@@ -44,9 +44,13 @@ window.LAB_CATALOG = {
       summary: "Measure the band heads of the AlO B²Σ⁺ → X²Σ⁺ system on a photographic plate with a travelling comparator, calibrate against mercury lines, and obtain ωe and xe for both electronic states.",
       thumb: "experiments/alo-band-spectrum/docs/plate.png",
       status: "live"
-    },
+    }
 
-    {
+    /* ---- The entry below is the worked example of an experiment described
+            in a spec rather than coded. Its files are still in the repository
+            (experiments/hall-effect/spec.json); uncomment this to list it.
+
+    ,{
       id: "hall-effect",
       title: "Hall coefficient and carrier concentration of a semiconductor",
       number: 3,
@@ -60,38 +64,6 @@ window.LAB_CATALOG = {
       thumb: null,
       engine: "spec",
       status: "live"
-    }
-
-    /* ---- Entries below are examples of how the grouping works.
-            Delete them, or replace them as you build each one. ----
-
-    ,{
-      id: "hall-effect",
-      title: "Hall coefficient and carrier concentration of a semiconductor",
-      number: 3,
-      programme: "M.Sc. Physics",
-      semester: "Semester I",
-      course: "General Physics Laboratory III",
-      subject: "Solid state physics",
-      tags: ["semiconductor", "magnetic field", "carrier density"],
-      duration: "2 h",
-      summary: "Not built yet.",
-      thumb: null,
-      status: "planned"
-    },
-    {
-      id: "planck-constant-photocell",
-      title: "Planck's constant from the photoelectric effect",
-      number: 2,
-      programme: "B.Sc. Physics",
-      semester: "Semester IV",
-      course: "Modern Physics Laboratory",
-      subject: "Quantum physics",
-      tags: ["photoelectric", "stopping potential"],
-      duration: "90 min",
-      summary: "Not built yet.",
-      thumb: null,
-      status: "planned"
     }
 
     ---- */

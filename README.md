@@ -110,7 +110,20 @@ only, never written to disk.
 | Students | register number, name, batch, group; add one, or paste a list |
 | Assignments | which experiment a batch is doing, in practice or assessed mode, with the link to share |
 | Submissions | read from the sheet, filtered by experiment, with a list of who has not submitted and a CSV export |
+| Programme, course, subject | re-files any experiment — including the coded ones — without touching the repository |
 | Catalog builder | fills in a catalog entry and downloads `catalog.js` with it added |
+
+## Where an experiment is filed
+
+Programme, semester, course, subject, title, number, duration and summary are held in the sheet
+and edited in the console. The portal reads them when it lists an experiment, and the experiment
+page asks for its own before it draws the report header, so a change shows up in both without a
+deploy.
+
+What ships in `data/catalog.js` and `js/meta.js` is the fallback: it is what students see when
+no endpoint is configured, or when the sheet cannot be reached. Nothing waits on the network —
+the page renders from the built-in values and re-renders if the sheet answers with something
+different. "Revert" in the console deletes the sheet row and the built-in values stand again.
 
 ## Instructor switches
 
@@ -119,8 +132,19 @@ Both are read by any experiment built on the template.
 | URL | Effect |
 |---|---|
 | `experiments/<id>/` | normal working session |
-| `experiments/<id>/?exam=1` | on-screen identification aids off and locked |
 | `experiments/<id>/?demo=1` | adds a button that fills in every reading, for demonstrating |
+
+## One submission per candidate
+
+Submitting finishes an experiment. The student's PDF is built and downloaded first, the record
+is sent, and only then is the working cleared from the browser — so the next candidate at that
+machine starts from a blank plate with nothing of the last one's left behind. If the PDF cannot
+be built, nothing is sent and nothing is cleared.
+
+A register number may submit a given experiment once. The browser remembers, and the sheet
+enforces it: a second attempt is written to a **Repeat attempts** tab rather than replacing the
+first or being thrown away, so you can see it happened and decide. Set `ONE_PER_STUDENT: false`
+in `apps-script/Code.gs` to accept resubmissions normally.
 
 ## Tests
 
