@@ -606,7 +606,7 @@
       '<p class="formula">ν̃ (cm⁻¹) = 10⁸ ⁄ λ (Å)</p>' +
       wavenumbers +
       tallyNote(tally(checks), "Convert each wavelength in the table above.") +
-      '<div class="note">Read across a row: the spacing between neighbouring columns is a vibrational quantum of the lower state. Read down a column: the spacing between neighbouring rows belongs to the upper state.</div>' +
+      '<div class="note"><strong>Which way to subtract.</strong> Down a column — successive rows, v′ rising while v″ stays put — leaves a quantum of the <em>upper</em> state, about 860 cm⁻¹ here. Along a row — successive columns, v″ rising while v′ stays put — leaves a quantum of the <em>lower</em> state, about 965 cm⁻¹, and since ν̃ falls to the right you take the left entry minus the right one. The two are easy to swap, and the sizes are the giveaway.</div>' +
       nav();
   }
 
@@ -619,84 +619,168 @@
     var key = which === "upper" ? "up" : "lo";
     var w = S.work[key];
     var pr = which === "upper" ? "′" : "″";
+    var other = which === "upper" ? "lower" : "upper";
     var lit = which === "upper"
       ? { we: P.LIT.we_u, wexe: P.LIT.wexe_u, xe: P.LIT.xe_u }
       : { we: P.LIT.we_l, wexe: P.LIT.wexe_l, xe: P.LIT.xe_l };
-    var along = which === "upper" ? "column" : "row";
+
+    /* The manual's wording, and the operation it amounts to on the table.
+       Upper state: successive ROWS, which means two entries one above the
+       other, in the same column. Lower state: successive COLUMNS, two
+       entries side by side in the same row, left minus right. */
+    var says = which === "upper"
+      ? {
+        manual: "the separation between two successive rows",
+        how: "two entries one above the other in the same column",
+        cell: function (v) { return "ν̃(" + (v + 1) + ", v″) − ν̃(" + v + ", v″)"; },
+        index: "v″", wrongWay: "row"
+      }
+      : {
+        manual: "the separation between two successive columns",
+        how: "two entries side by side in the same row, the left one minus the right one",
+        cell: function (v) { return "ν̃(v′, " + v + ") − ν̃(v′, " + (v + 1) + ")"; },
+        index: "v′", wrongWay: "column"
+      };
 
     if (!a || !a[which].first.length) {
-      return '<div class="note warn">Not enough of the wavenumber table is filled in yet. You need at least three successive ' +
-        (which === "upper" ? "rows" : "columns") + ' of it before the differences can be taken.</div>';
+      return '<div class="note warn">Not enough of the wavenumber table is filled in yet. ' +
+        'For the ' + (which === "upper" ? "upper" : "lower") + ' state you need entries in ' +
+        (which === "upper" ? "successive rows of the same column" : "successive columns of the same row") +
+        ' before any difference can be taken.</div>';
     }
-    var st = a[which];
-    var checks = [];
+    var st = a[which], stOther = a[other];
+    var checks = [], notes = [];
 
-    /* the pairs the student should subtract, straight from their own table */
-    var pairs = st.first.slice(0, 3).map(function (f, i) {
-      var terms = f.terms.map(function (t) {
-        var idx = t.vl !== undefined ? t.vl : t.vu;
-        return (which === "upper" ? "v″ = " : "v′ = ") + idx;
-      });
-      return { i: i, v: f.v, expected: f.value, terms: terms };
-    });
+    /* Intervals are addressed by name, never by position: ΔG(½) is always
+       the first box, whether or not the table happens to offer it. */
+    var byV = {};
+    st.first.forEach(function (f) { byV[f.v] = f; });
 
-    var rows = pairs.map(function (p) {
-      var c = check(w.dg[p.i], p.expected, 2.0);
+    function accept(f) {
+      /* the mean of the columns, and each column on its own: a student who
+         works from one column of the table is doing exactly what the manual
+         asks, and must not be told otherwise */
+      return [f.value].concat(f.terms.map(function (t) { return t.value; }));
+    }
+
+    function checkAgainst(typed, values, tol) {
+      var t = numOf(typed);
+      if (!isFinite(t)) return { state: "empty" };
+      if (!values.length) return { state: "unknown" };
+      var best = Infinity;
+      values.forEach(function (v) { best = Math.min(best, Math.abs(t - v)); });
+      return { state: best <= tol ? "ok" : "off", off: best, typed: t };
+    }
+
+    /* why a value is wrong, where the app can tell */
+    function whyFirst(c, f) {
+      if (!c || c.state !== "off") return null;
+      var t = c.typed;
+      if (t < 0 && Math.abs(Math.abs(t) - f.value) < 3) {
+        return "ΔG" + pr + "(" + f.v + " + ½) came out negative — you have subtracted the two entries the wrong way round.";
+      }
+      var o = stOther.first.filter(function (g) { return g.v === f.v; })[0];
+      if (o && Math.abs(t - o.value) < 4) {
+        return "ΔG" + pr + "(" + f.v + " + ½) is the size of a quantum of the other state. You have taken the difference along a " +
+          says.wrongWay + "; for this state it is " + says.how + ".";
+      }
+      return "ΔG" + pr + "(" + f.v + " + ½) does not match any difference in your own table. Re-do the subtraction: " + says.cell(f.v) + ".";
+    }
+
+    var rows = [0, 1, 2].map(function (v) {
+      var f = byV[v];
+      if (!f) {
+        return '<tr class="pending"><td>ΔG' + pr + "(" + v + " + ½)</td>" +
+          '<td colspan="2">Not available from your table yet — you need ' +
+          (which === "upper" ? "bands in rows " + v + " and " + (v + 1) + " of the same column"
+            : "bands in columns " + v + " and " + (v + 1) + " of the same row") + ".</td></tr>";
+      }
+      var c = checkAgainst(w.dg[v], accept(f), 1.5);
       checks.push(c);
-      return '<tr><td>ΔG' + pr + '(' + p.v + ' + ½) = G' + pr + '(' + (p.v + 1) + ') − G' + pr + '(' + p.v + ')</td>' +
-        '<td>' + esc(p.terms.join(",  ")) + '</td>' +
-        '<td class="num">' + numInput("dg-" + key, String(p.i), w.dg[p.i]) + " " + mark(c, "this difference does not match your own table") + '</td></tr>';
+      var note = whyFirst(c, f);
+      if (note) notes.push(note);
+      var where = f.terms.map(function (t) {
+        return says.index + " = " + (t.vl !== undefined ? t.vl : t.vu);
+      }).join(", ");
+      return "<tr><td>ΔG" + pr + "(" + v + " + ½) = G" + pr + "(" + (v + 1) + ") − G" + pr + "(" + v + ")</td>" +
+        "<td>" + esc(says.cell(v)) + "<br><small>available for " + esc(where) + "</small></td>" +
+        '<td class="num">' + numInput("dg-" + key, String(v), w.dg[v]) + " " + mark(c) + "</td></tr>";
     }).join("");
 
-    var dgs = w.dg.map(numOf);
-    var expD2 = (isFinite(dgs[0]) && isFinite(dgs[1])) ? dgs[0] - dgs[1] : NaN;
-    var cD2 = check(w.d2, expD2, 1.0);
-    var expWexe = isFinite(numOf(w.d2)) ? numOf(w.d2) / 2 : NaN;
-    var cWexe = check(w.wexe, expWexe, 0.6);
-    var expWe = (isFinite(dgs[0]) && isFinite(numOf(w.d2))) ? dgs[0] + numOf(w.d2) : NaN;
-    var cWe = check(w.we, expWe, 1.5);
-    var expXe = (isFinite(numOf(w.wexe)) && isFinite(numOf(w.we)) && numOf(w.we)) ? numOf(w.wexe) / numOf(w.we) : NaN;
-    var cXe = check(w.xe, expXe, 0.0004);
+    /* everything below follows from the three boxes above, using the
+       student's own figures — never the app's */
+    var dg0 = numOf(w.dg[0]), dg1 = numOf(w.dg[1]), d2 = numOf(w.d2);
+    var expD2 = (isFinite(dg0) && isFinite(dg1)) ? dg0 - dg1 : NaN;
+    var cD2 = check(w.d2, expD2, 0.8);
+    var expWexe = isFinite(d2) ? d2 / 2 : NaN;
+    var cWexe = check(w.wexe, expWexe, 0.4);
+    var expWe = (isFinite(dg0) && isFinite(d2)) ? dg0 + d2 : NaN;
+    var cWe = check(w.we, expWe, 1.0);
+    var wexe = numOf(w.wexe), we = numOf(w.we);
+    var expXe = (isFinite(wexe) && isFinite(we) && we) ? wexe / we : NaN;
+    var cXe = check(w.xe, expXe, 0.0003);
     checks.push(cD2, cWexe, cWe, cXe);
+
+    if (cWexe.state === "off" && isFinite(d2) && Math.abs(wexe - d2) < 0.4) {
+      notes.push("ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr + " is your Δ²G" + pr + " itself. The second difference is 2ω<sub>e</sub>x<sub>e</sub>, so halve it.");
+    }
+    if (cWe.state === "off" && isFinite(dg0) && Math.abs(we - dg0) < 1.0) {
+      notes.push("ω<sub>e</sub>" + pr + " is your first difference on its own. Add the whole second difference to it, not half of it.");
+    }
+    if (cXe.state === "off" && isFinite(expXe) && expXe && Math.abs(numOf(w.xe) - 1 / expXe) / (1 / expXe) < 0.05) {
+      notes.push("x<sub>e</sub>" + pr + " is the ratio the other way up. It is ω<sub>e</sub>x<sub>e</sub> divided by ω<sub>e</sub>, so it comes out small — a few thousandths.");
+    }
+    if (cD2.state === "off" && isFinite(expD2) && numOf(w.d2) < 0) {
+      notes.push("Δ²G" + pr + " should be positive: it is the first difference minus the second, and the quanta shrink as v rises.");
+    }
 
     var second = '<div class="tablewrap"><table><caption>Second difference and the constants</caption>' +
       '<thead><tr><th>Quantity</th><th>From</th><th class="num">Your value</th></tr></thead><tbody>' +
-      '<tr><td>Δ²G' + pr + ' = ΔG' + pr + '(½) − ΔG' + pr + '(3/2)</td><td>your two differences above</td>' +
-      '<td class="num">' + numInput("d2-" + key, "d2", w.d2) + " " + mark(cD2) + '</td></tr>' +
-      '<tr><td>ω<sub>e</sub>' + pr + 'x<sub>e</sub>' + pr + ' = Δ²G' + pr + ' ⁄ 2</td><td>half of the line above</td>' +
-      '<td class="num">' + numInput("d2-" + key, "wexe", w.wexe) + " " + mark(cWexe) + '</td></tr>' +
-      '<tr><td>ω<sub>e</sub>' + pr + ' = ΔG' + pr + '(½) + 2ω<sub>e</sub>' + pr + 'x<sub>e</sub>' + pr + '</td><td>first difference plus the second difference</td>' +
-      '<td class="num">' + numInput("d2-" + key, "we", w.we) + " " + mark(cWe) + '</td></tr>' +
-      '<tr><td>x<sub>e</sub>' + pr + ' = ω<sub>e</sub>' + pr + 'x<sub>e</sub>' + pr + ' ⁄ ω<sub>e</sub>' + pr + '</td><td>the two lines above</td>' +
-      '<td class="num">' + numInput("d2-" + key, "xe", w.xe) + " " + mark(cXe) + '</td></tr>' +
-      '</tbody></table></div>';
+      "<tr><td>Δ²G" + pr + " = ΔG" + pr + "(½) − ΔG" + pr + "(3/2) = 2ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr + "</td>" +
+      "<td>the first two boxes above</td>" +
+      '<td class="num">' + numInput("d2-" + key, "d2", w.d2) + " " + mark(cD2) + "</td></tr>" +
+      "<tr><td>ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr + " = Δ²G" + pr + " ⁄ 2</td><td>half of the line above</td>" +
+      '<td class="num">' + numInput("d2-" + key, "wexe", w.wexe) + " " + mark(cWexe) + "</td></tr>" +
+      "<tr><td>ω<sub>e</sub>" + pr + " = ΔG" + pr + "(½) + 2ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr + "</td>" +
+      "<td>the first box plus the whole second difference</td>" +
+      '<td class="num">' + numInput("d2-" + key, "we", w.we) + " " + mark(cWe) + "</td></tr>" +
+      "<tr><td>x<sub>e</sub>" + pr + " = ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr + " ⁄ ω<sub>e</sub>" + pr + "</td><td>the two lines above</td>" +
+      '<td class="num">' + numInput("d2-" + key, "xe", w.xe) + " " + mark(cXe) + "</td></tr>" +
+      "</tbody></table></div>";
 
     var strip = "";
-    if (isFinite(numOf(w.we))) {
+    if (isFinite(we)) {
       strip = '<div class="result-strip">' +
-        resultCell("ω<sub>e</sub>" + pr, fmt(numOf(w.we), 1) + " cm⁻¹", "literature " + fmt(lit.we, 1)) +
-        resultCell("ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr, fmt(numOf(w.wexe), 2) + " cm⁻¹", "literature " + fmt(lit.wexe, 2)) +
+        resultCell("ω<sub>e</sub>" + pr, fmt(we, 1) + " cm⁻¹", "literature " + fmt(lit.we, 1)) +
+        resultCell("ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr, fmt(wexe, 2) + " cm⁻¹", "literature " + fmt(lit.wexe, 2)) +
         resultCell("x<sub>e</sub>" + pr, fmt(numOf(w.xe), 5), "literature " + fmt(lit.xe, 5)) +
-        '</div>';
+        "</div>";
     }
 
-    return '<p>Take each difference from your own wavenumber table: subtract two entries in the same ' + along +
-      '. Where a ' + along + ' gives more than one value for the same interval, average them and enter the mean.</p>' +
-      '<div class="tablewrap"><table><caption>First differences ΔG' + pr + '(v + ½), in cm⁻¹</caption>' +
-      '<thead><tr><th>Interval</th><th>Available from ' + (which === "upper" ? "columns" : "rows") + '</th><th class="num">Your value</th></tr></thead>' +
-      '<tbody>' + rows + '</tbody></table></div>' +
-      second + strip +
+    var advice = notes.length
+      ? '<div class="note bad"><strong>What to look at:</strong><ul><li>' + notes.join("</li><li>") + "</li></ul></div>"
+      : "";
+
+    return '<div class="note">' + says.manual.charAt(0).toUpperCase() + says.manual.slice(1) +
+      " of the Deslandre table is a vibrational quantum of this state. On the table that means " + says.how + ".</div>" +
+      "<p>Take each difference from your own wavenumber table. Where more than one " +
+      (which === "upper" ? "column" : "row") +
+      " offers the same interval you may use any of them, or their mean — they should agree to about a wavenumber.</p>" +
+      '<div class="tablewrap"><table><caption>First differences ΔG' + pr + "(v + ½), in cm⁻¹</caption>" +
+      "<thead><tr><th>Interval</th><th>Subtract, on your table</th><th class=\"num\">Your value</th></tr></thead>" +
+      "<tbody>" + rows + "</tbody></table></div>" +
+      second + strip + advice +
       tallyNote(tally(checks), "Work down the tables above.") +
-      '<div class="card">' + workBox(key, "Your working — subtractions, averages and the substitution into each formula") + '</div>';
+      '<div class="card">' + workBox(key, "Your working — the subtractions, any averaging, and the substitution into each formula") + "</div>";
   }
 
   function stepUpper() {
     return '<h2>Vibrational quanta of the upper state B²Σ⁺</h2>' + stateStep("upper") +
-      '<div class="note">Each ΔG′ comes from subtracting two entries in the same column of your wavenumber table, so a column missing a band simply contributes nothing to that average.</div>' + nav();
+      '<div class="note">Moving down a column means going up the v′ ladder while v″ stays put, so what is left is a quantum of the upper state. A column that is missing a band simply offers that interval one time fewer.</div>' + nav();
   }
   function stepLower() {
     return '<h2>Vibrational quanta of the lower state X²Σ⁺</h2>' + stateStep("lower") +
-      '<div class="note">Here the differences run along a row. Note that ν̃ falls as v″ rises, so the difference is the left entry minus the right one.</div>' + nav();
+      '<div class="note">Moving along a row means going up the v″ ladder while v′ stays put. Note that ν̃ <em>falls</em> as v″ rises, so the left entry minus the right one gives a positive quantum.</div>' + nav();
   }
 
   function resultCell(label, value, extra) {
@@ -802,6 +886,7 @@
     }
     return '<h2>Result</h2>' + resultTable(r) +
       '<p>Both quanta should be a few hundred cm⁻¹ up on a thousand, with the ground state the larger of the two, and both anharmonicities small, positive and around half a per cent of ω<sub>e</sub>. If yours are not, the fault is upstream: go back to the difference that is marked ✗.</p>' +
+      '<div class="note"><strong>How close should you expect to be?</strong> ω<sub>e</sub> comes straight from a first difference and should land within a few tenths of a per cent. x<sub>e</sub> does not: it rests on Δ²G, a difference of differences of about 7 cm⁻¹, and one least count on a single head is already 0.4 cm⁻¹. Five to ten per cent on x<sub>e</sub> is a good result at this least count, and is a statement about the instrument rather than about your arithmetic. Averaging every column an interval offers, and measuring the fainter bands as well, is the only way to do better.</div>' +
       '<div class="card"><label class="field"><span>Sources of error and remarks</span>' +
       '<textarea data-answer="errors" placeholder="Setting the crosswire on a shaded band head, choice of mercury lines, rounding in the conversion to cm⁻¹, the assumption that the second difference is constant…">' + esc(S.answers.errors) + '</textarea></label></div>' +
       nav();
@@ -1107,7 +1192,9 @@
     var a = analysis();
     ["upper", "lower"].forEach(function (w) {
       var key = w === "upper" ? "up" : "lo", st = a[w];
-      S.work[key].dg = [0, 1, 2].map(function (i) { return st.first[i] ? st.first[i].value.toFixed(1) : ""; });
+      var byV = {};
+      st.first.forEach(function (f) { byV[f.v] = f; });
+      S.work[key].dg = [0, 1, 2].map(function (v) { return byV[v] ? byV[v].value.toFixed(1) : ""; });
       var d2 = numOf(S.work[key].dg[0]) - numOf(S.work[key].dg[1]);
       S.work[key].d2 = d2.toFixed(2);
       S.work[key].wexe = (d2 / 2).toFixed(2);

@@ -174,8 +174,11 @@
     function dOf(lambda) { return truth.d0 + truth.C / (lambda - truth.lam0); }
     function lambdaOf(d) { return truth.lam0 + truth.C / (d - truth.d0); }
 
-    // measurement scatter: emulsion grain + setting error, ±0.0008 cm
-    function jitter() { return (rnd() - 0.5) * 0.0016; }
+    /* Scatter on where a head sits on this student's plate: emulsion grain
+       and plate defects, ±0.0004 cm. Below this the readings are limited by
+       the comparator's least count of 0.001 cm, which is where a real
+       measurement of this kind stops too. */
+    function jitter() { return (rnd() - 0.5) * 0.0008; }
 
     var bands = buildBands().map(function (b) {
       var o = Object.assign({}, b);

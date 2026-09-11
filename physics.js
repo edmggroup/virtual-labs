@@ -10,21 +10,46 @@
 (function (root) {
   "use strict";
 
-  /* ---------- 1. Spectroscopic truth (hidden from students) ---------- */
+  /* ---------- 1. Spectroscopic truth (hidden from students) ----------
+
+     The plate is generated from published data, not from invented
+     numbers, so what a student measures off it agrees with the
+     literature they will check it against.
+
+       X²Σ⁺ vibrational term values  ExoMol AlO line list (Patrascu,
+                                     Yurchenko & Tennyson, MNRAS 2015),
+                                     which reproduces the laboratory
+                                     data of Coxon & Naxakis (1985) and
+                                     Launila & Berg (2011) to ~0.07 cm⁻¹
+       ωe, ωexe                      Huber & Herzberg: X²Σ⁺ 979.23 and
+                                     6.97, B²Σ⁺ 870.05 and 3.52 cm⁻¹
+       (0,0) band head               4842.0 Å, the value quoted for the
+                                     head in laboratory and stellar work
+       Bv, αe                        Coxon & Naxakis (1985)
+
+     Term values for v″ ≤ 7 are taken from the line list rather than
+     from ωe and ωexe. Real levels are not exactly quadratic, so the
+     second differences a student takes come out slightly uneven — as
+     they would from a real plate — while still returning ωe″ to
+     better than a tenth of a per cent.
+     ---------------------------------------------------------------- */
+
+  /* G″(v) − G″(0), cm⁻¹, from the ExoMol 27Al16O state file */
+  var GX = [0, 965.435, 1916.845, 2854.206, 3777.504, 4686.660, 5581.907, 6463.039];
 
   var TRUTH = {
     // B²Σ⁺ (upper)
-    we_u: 870.0,      // ωe'   cm⁻¹
-    wexe_u: 3.50,     // ωe'xe'
+    we_u: 870.05,     // ωe'   cm⁻¹
+    wexe_u: 3.52,     // ωe'xe'
     // X²Σ⁺ (lower)
     we_l: 979.23,     // ωe"
     wexe_l: 6.97,     // ωe"xe"
-    nu00: 20652.0,    // ν̃(0,0) cm⁻¹  → 4842 Å
-    Tvib: 4500        // effective vibrational temperature of the arc, K
+    nu00: 1e8 / 4842.0,   // head of the (0,0) band, cm⁻¹
+    Tvib: 4500        // vibrational temperature of the arc, K
   };
 
   var LIT = {
-    we_u: 870.0, wexe_u: 3.50, xe_u: 3.50 / 870.0,
+    we_u: 870.05, wexe_u: 3.52, xe_u: 3.52 / 870.05,
     we_l: 979.23, wexe_l: 6.97, xe_l: 6.97 / 979.23
   };
 
@@ -64,11 +89,18 @@
     return we * x - wexe * x * x;
   }
 
-  function nuBand(vu, vl, t) {
-    t = t || TRUTH;
-    return t.nu00 +
-      (G(vu, t.we_u, t.wexe_u) - G(0, t.we_u, t.wexe_u)) -
-      (G(vl, t.we_l, t.wexe_l) - G(0, t.we_l, t.wexe_l));
+  /* G(v) − G(0) for the ground state: the measured ladder where it is
+     known, the two-constant formula above it */
+  function GlowerRel(v) {
+    if (v < GX.length) return GX[v];
+    return G(v, TRUTH.we_l, TRUTH.wexe_l) - G(0, TRUTH.we_l, TRUTH.wexe_l);
+  }
+  function GupperRel(v) {
+    return G(v, TRUTH.we_u, TRUTH.wexe_u) - G(0, TRUTH.we_u, TRUTH.wexe_u);
+  }
+
+  function nuBand(vu, vl) {
+    return TRUTH.nu00 + GupperRel(vu) - GlowerRel(vl);
   }
 
   function nuToLambda(nu) { return 1e8 / nu; }   // cm⁻¹ → Å
@@ -142,8 +174,11 @@
     function dOf(lambda) { return truth.d0 + truth.C / (lambda - truth.lam0); }
     function lambdaOf(d) { return truth.lam0 + truth.C / (d - truth.d0); }
 
-    // measurement scatter: emulsion grain + setting error, ±0.0008 cm
-    function jitter() { return (rnd() - 0.5) * 0.0016; }
+    /* Scatter on where a head sits on this student's plate: emulsion grain
+       and plate defects, ±0.0004 cm. Below this the readings are limited by
+       the comparator's least count of 0.001 cm, which is where a real
+       measurement of this kind stops too. */
+    function jitter() { return (rnd() - 0.5) * 0.0008; }
 
     var bands = buildBands().map(function (b) {
       var o = Object.assign({}, b);

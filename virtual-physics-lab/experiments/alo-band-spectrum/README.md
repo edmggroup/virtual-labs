@@ -61,14 +61,23 @@ does return them:
 
 | | ωe (cm⁻¹) | ωexe (cm⁻¹) |
 |---|---|---|
-| B²Σ⁺ upper | 870.0 | 3.50 |
+| B²Σ⁺ upper | 870.05 | 3.52 |
 | X²Σ⁺ lower | 979.23 | 6.97 |
 
 with ν̃(0,0) = 20652 cm⁻¹ (4842 Å). Band positions come from
 ν̃(v′,v″) = ν̃₀₀ + [G′(v′) − G′(0)] − [G″(v″) − G″(0)], intensities from a Boltzmann
 population at 4500 K times a Franck–Condon factor that falls off with |Δv|, and plate
 positions from an exact Hartmann dispersion with a per-student offset and ±0.0008 cm of
-setting scatter. A student working carefully lands within about 0.5 % of ωe and 5 % of xe.
+setting scatter. ## What a student should get
+
+Across 300 generated plates, a student who measures the fourteen bands of the main block and does
+the arithmetic correctly lands within **0.2 % of ωe** for both states. **xe is a different matter**,
+and deliberately so: it rests on Δ²G, a difference of differences of about 7 cm⁻¹, and one least
+count on a single band head is already 0.4 cm⁻¹. The worst case over those 300 plates is 11 %,
+the usual case a few per cent. That is the least count talking, not the student — the same limit
+they would meet at a real comparator — and the result page says so, so nobody reads 6 % on xe as
+a mistake. Averaging every column an interval offers, and measuring the fainter bands too, is the
+only way to improve it.
 
 Bands are not drawn as smooth blobs. Each one is built from its rotational lines,
 
@@ -114,10 +123,12 @@ The department name on the report header and the submission address are site-wid
 ## Tests
 
 ```
-node tests/selftest.js       # does the analysis recover the constants, for several plates
-node tests/smoke.js          # walks all fourteen steps in jsdom (npm i jsdom first)
-node tests/plate-preview.js  # renders the plate through the real drawing code to docs/plate.png
-node tests/report-preview.js # builds the whole illustrated record to docs/sample-report.pdf
+node tests/selftest.js        # does the analysis recover the constants, for several plates
+node tests/sweep.js           # works 300 different plates through and reports the worst case
+node tests/analysis-check.js  # a correct student passes; every classic mistake is caught and named
+node tests/smoke.js           # walks all fourteen steps in jsdom (npm i jsdom first)
+node tests/plate-preview.js   # renders the plate through the real drawing code to docs/plate.png
+node tests/report-preview.js  # builds the whole illustrated record to docs/sample-report.pdf
 node tests/chart-preview.js    # rasterises the report graphs (needs @resvg/resvg-js)
 node tests/figures-preview.js  # rasterises the three teaching figures
 ```
