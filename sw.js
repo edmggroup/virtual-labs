@@ -11,7 +11,7 @@
    files they already hold.
    ============================================================ */
 
-var CACHE = "vlab-v6";
+var CACHE = "vlab-v7";
 
 var CORE = [
   "./",
@@ -27,6 +27,7 @@ var CORE = [
   "./shared/js/report-doc.js",
   "./shared/js/pwa.js",
   "./shared/js/formula.js",
+  "./shared/js/bench-tools.js",
   "./shared/js/plot.js",
   "./shared/js/lab-engine.js",
   "./experiments/_generic/index.html",

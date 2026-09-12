@@ -4,8 +4,9 @@ A static site that hosts simulated laboratory experiments, grouped by programme,
 subject, with one shared submission backend behind all of them.
 
 No build step and no dependencies: it is HTML, CSS and plain JavaScript, so GitHub Pages serves
-it as it stands. See [DEPLOY.md](DEPLOY.md) to put it online and
-[ADDING-AN-EXPERIMENT.md](ADDING-AN-EXPERIMENT.md) to add the next one.
+it as it stands. See [DEPLOY.md](DEPLOY.md) to put it online, [BACKEND.md](BACKEND.md) to connect
+the Google Sheet behind it, and [ADDING-AN-EXPERIMENT.md](ADDING-AN-EXPERIMENT.md) to add the
+next experiment.
 
 ## What is here
 
@@ -22,6 +23,7 @@ shared/js/report-doc.js        one block list → preview, PDF and Google Doc
 shared/js/portal.js            filtering and grouping on the front page
 shared/js/pwa.js               service-worker registration and the install prompt
 shared/js/formula.js           the little expression language specs are written in
+shared/js/bench-tools.js       the on-page calculator and the look back at earlier tables
 shared/js/lab-engine.js        runs an experiment that was described rather than coded
 shared/js/plot.js              scatter plot with a fitted line
 experiments/_generic/          the page that runs a described experiment

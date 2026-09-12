@@ -341,6 +341,8 @@ filing();
 engine();
 pwa();
 layout();
+assets();
+handlers();
 
 if (errors.length) { console.log('\nERRORS:'); errors.forEach(e => console.log(' - ' + e)); process.exit(1); }
 console.log('\nno errors');
@@ -370,5 +372,52 @@ function layout() {
   const wide = css.match(/(^|[^-a-z])width:\s*(\d{3,})px/g) || [];
   const tooWide = wide.filter(w => parseInt(w.replace(/\D/g, ''), 10) > 360);
   if (tooWide.length) errors.push('fixed widths wider than a phone: ' + tooWide.join(', '));
+}
+
+
+/* ---------- nothing referenced that is not there, nothing there twice ---------- */
+
+function assets() {
+  const pages = ['index.html', 'admin/index.html', 'experiments/alo-band-spectrum/index.html',
+    'experiments/_generic/index.html', 'experiments/_template/index.html'];
+  let checked = 0;
+  pages.forEach(page => {
+    const dir = path.dirname(path.join(root, page));
+    const html = fs.readFileSync(path.join(root, page), 'utf8');
+    const refs = [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map(m => m[1])
+      .filter(u => !/^https?:|^#|^mailto:/.test(u));
+    refs.forEach(u => {
+      const target = path.resolve(dir, u.split('?')[0].split('#')[0]);
+      if (!fs.existsSync(target)) errors.push(page + ' points at a file that is not there: ' + u);
+      checked++;
+    });
+    const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]);
+    const dupes = ids.filter((x, i) => ids.indexOf(x) !== i);
+    if (dupes.length) errors.push(page + ' has the same id twice: ' + [...new Set(dupes)].join(', '));
+  });
+  console.log('assets: ' + checked + ' references across ' + pages.length + ' pages, all present');
+
+  // every shared script should be either loaded by a page or precached; no orphans
+  const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+  const allHtml = pages.map(p => fs.readFileSync(path.join(root, p), 'utf8')).join('\n');
+  fs.readdirSync(path.join(root, 'shared/js')).forEach(f => {
+    const used = allHtml.indexOf('shared/js/' + f) >= 0;
+    if (!used) errors.push('shared/js/' + f + ' is loaded by no page — dead file or a missing script tag');
+    if (sw.indexOf('shared/js/' + f) < 0) errors.push('shared/js/' + f + ' is not precached, so it will not work offline');
+  });
+}
+
+/* ---------- every button the experiment draws must have a handler ---------- */
+
+function handlers() {
+  const app = fs.readFileSync(path.join(root, 'experiments/alo-band-spectrum/js/app.js'), 'utf8');
+  const drawn = new Set([...app.matchAll(/data-action="([a-zA-Z]+)"/g)].map(m => m[1]));
+  const handled = new Set([...app.matchAll(/a === "([a-zA-Z]+)"/g)].map(m => m[1]));
+  const orphans = [...drawn].filter(a => !handled.has(a));
+  const unused = [...handled].filter(a => !drawn.has(a));
+  console.log('buttons: ' + drawn.size + ' drawn, ' + handled.size + ' handled' +
+    (orphans.length ? ' | ORPHANS: ' + orphans.join(', ') : '') +
+    (unused.length ? ' | handlers with no button: ' + unused.join(', ') : ''));
+  orphans.forEach(a => errors.push('the experiment draws a "' + a + '" button that nothing handles'));
 }
 
