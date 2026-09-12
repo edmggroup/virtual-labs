@@ -38,6 +38,7 @@ window.addEventListener('error', e => errors.push('window error: ' + e.message))
 
 const SCRIPTS = ['../../shared/js/config.js', 'js/meta.js', '../../shared/js/lab-submit.js',
   '../../shared/js/pdf.js', '../../shared/js/report-doc.js',
+  '../../shared/js/formula.js', '../../shared/js/bench-tools.js',
   'js/physics.js', 'js/spectrum.js', 'js/charts.js', 'js/report.js', 'js/app.js'];
 for (const f of SCRIPTS) {
   try { window.eval(fs.readFileSync(path.join(root, f), 'utf8')); }
@@ -133,6 +134,52 @@ try {
   errors.push('walk: ' + e.stack.split('\n').slice(0, 4).join(' | '));
 }
 
+// the calculator and the look-back panel
+try {
+  const doc = window.document;
+  const launch = doc.getElementById('benchLaunch');
+  const panel = doc.getElementById('benchPanel');
+  if (!launch || !panel) throw new Error('the tools panel was never built');
+  if (!panel.hidden) errors.push('the tools panel starts open');
+
+  // open it from the upper-state step, on the reference tab
+  window.document.querySelectorAll('.rail button')[8]
+    .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  const refBtn = doc.querySelector('[data-action="showRef"]');
+  if (!refBtn) throw new Error('no button to show the table');
+  refBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  const ref = doc.getElementById('benchRef').innerHTML;
+  const cells = (ref.match(/<td class="num">/g) || []).length;
+  console.log('reference panel: open =', !panel.hidden, '| wavenumber cells shown =', cells,
+    '| says which way to subtract =', /down a column/.test(ref));
+  if (panel.hidden) errors.push('the panel did not open');
+  if (cells < 10) errors.push('the wavenumber table was not carried into the panel');
+  if (!/down a column/.test(ref)) errors.push('the panel does not say which way to subtract');
+
+  // the calculator
+  doc.querySelector('[data-bench-tab="calc"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  const input = doc.getElementById('benchInput');
+  const sums = [['20652.3 − 19687.0', '965.3'], ['(862.8 - 855.9)', '6.9'], ['3.45/869.7', '0.003967']];
+  sums.forEach(([src, want]) => {
+    input.value = src;
+    doc.querySelector('[data-bench-key="="]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    const top = doc.querySelector('#benchTape li b');
+    const got = top ? top.textContent : '';
+    console.log('  calculator:', src.padEnd(20), '=', got);
+    if (Math.abs(parseFloat(got) - parseFloat(want)) > Math.abs(parseFloat(want)) * 0.001) {
+      errors.push('calculator got ' + src + ' wrong: ' + got);
+    }
+  });
+  input.value = '4/(';
+  doc.querySelector('[data-bench-key="="]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  const bad = doc.querySelector('#benchTape li b').textContent;
+  console.log('  nonsense in:', JSON.stringify(bad));
+  if (/\d/.test(bad)) errors.push('the calculator invented an answer for nonsense');
+  if ((doc.querySelectorAll('#benchTape li').length) < 4) errors.push('the tape is not keeping its lines');
+} catch (e) {
+  errors.push('bench tools: ' + e.message);
+}
+
 // submitting finishes the experiment: the working must be gone afterwards
 try {
   const S = window.LabState.state;
@@ -148,8 +195,58 @@ try {
   const notice = window.document.getElementById('steps').innerHTML;
   if (!/Submitted\./.test(notice)) errors.push('no confirmation shown after submitting');
   if (!/fresh experiment/.test(notice)) errors.push('the fresh-start notice is missing');
+
+  // nothing identifying the last candidate may remain anywhere on the page
+  const page = window.document.body.innerHTML;
+  ['Test Student', '2447101'].forEach(bit => {
+    if (page.indexOf(bit) >= 0) errors.push('after submitting, the page still shows "' + bit + '"');
+  });
+  const who = window.document.getElementById('whoami');
+  console.log('after submitting — masthead shows:', JSON.stringify(who ? who.textContent : ''),
+    '| name or register anywhere on the page:', ['Test Student', '2447101'].some(b => page.indexOf(b) >= 0));
 } catch (e) {
   errors.push('finish: ' + e.message);
+}
+
+// the reference panel must carry the wavenumber table onto the difference steps
+try {
+  const railBtns = () => window.document.querySelectorAll('.rail button');
+  railBtns()[3].dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  setInput('[data-student="name"]', 'Test Student');
+  setInput('[data-student="register"]', '2447101');
+  click('[data-action="mount"]');
+  click('[data-action="fillall"]');
+  railBtns()[8].dispatchEvent(new window.MouseEvent('click', { bubbles: true }));   // upper state
+  const ref = window.document.getElementById('benchRef');
+  const text = ref ? ref.textContent.replace(/\s+/g, ' ') : '';
+  const hasConstants = /Hartmann/.test(text);
+  const hasGrid = /20652|v. . v./.test(text) || /cm⁻¹/.test(text);
+  console.log('reference panel on the upper-state step — constants:', hasConstants, '| table:', hasGrid);
+  if (!ref) errors.push('the reference panel is not on the page');
+  if (!hasConstants || !hasGrid) errors.push('the reference panel does not carry the details from the earlier steps');
+} catch (e) {
+  errors.push('reference panel: ' + e.message);
+}
+
+// the bench tools: the calculator must work out what a student types, and the
+// reference panel must carry the table they are working from
+try {
+  const bt = window.BenchTools;
+  if (!bt) throw new Error('BenchTools did not load');
+  const r1 = bt.evaluate ? bt.evaluate('20652.3 - 19687.0') : null;
+  const calcInput = window.document.getElementById('benchInput');
+  const calcOut = () => window.document.getElementById('benchTape');
+  if (calcInput) {
+    calcInput.value = '20652.3 - 19687.0';
+    calcInput.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    const tape = calcOut() ? calcOut().textContent : '';
+    console.log('calculator tape:', tape.replace(/\s+/g, ' ').trim().slice(0, 60));
+    if (tape.indexOf('965.3') < 0) errors.push('the calculator did not work out 20652.3 - 19687.0');
+  } else {
+    errors.push('the calculator input is not on the page');
+  }
+} catch (e) {
+  errors.push('bench tools: ' + e.message);
 }
 
 // the PDF the student downloads (graphs need a canvas, so text and tables only)

@@ -56,6 +56,13 @@ and come back to a half-finished experiment.
 
 ## The numbers behind it
 
+`tests/values-check.js` checks 48 of them against the literature rather than against this model:
+the four vibrational constants, the ground-state ladder, the (0,0), (1,0) and (0,1) heads, the
+span of each sequence, both rotational constants and the bond lengths they imply, the reduced
+mass, the turning point of the R branch, all seven mercury standards against NIST, and finally
+what a student actually recovers from a generated plate. It fails the build if any of them moves.
+
+
 The plate is generated from real spectroscopic constants, so the analysis in the manual really
 does return them:
 
@@ -123,6 +130,7 @@ The department name on the report header and the submission address are site-wid
 ## Tests
 
 ```
+node tests/values-check.js    # every constant, band head and standard line against the published value
 node tests/selftest.js        # does the analysis recover the constants, for several plates
 node tests/sweep.js           # works 300 different plates through and reports the worst case
 node tests/analysis-check.js  # a correct student passes; every classic mistake is caught and named

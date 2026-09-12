@@ -185,6 +185,73 @@
       esc(value === undefined || value === null ? "" : value) + '"' + (extra || "") + '>';
   }
 
+  /* ---------- what the tools panel has to hand ----------
+     Whatever the student worked out on an earlier step and needs in front
+     of them on this one — so nothing has to be memorised or scrolled back to. */
+
+  function referenceHTML() {
+    var id = STEPS[step] ? STEPS[step].id : "";
+    var H = studentHartmann();
+    var out = "";
+
+    if (["heads", "deslandre", "upper", "lower", "graphs", "result", "report"].indexOf(id) >= 0 && H) {
+      out += "<h4>Your Hartmann constants</h4>" +
+        '<p class="formula" style="font-size:.86rem">λ = ' + fmt(H.lam0, 2) + " + (" + fmt(H.C, 1) +
+        ") ⁄ (d − " + fmt(H.d0, 4) + ")</p>";
+    }
+
+    if (id === "upper" || id === "lower" || id === "graphs" || id === "result") {
+      out += wavenumberGrid(id);
+    }
+
+    if (id === "deslandre") {
+      out += "<h4>Converting</h4><p class=\"formula\" style=\"font-size:.86rem\">ν̃ = 10⁸ ⁄ λ</p>";
+    }
+
+    if (id === "result" || id === "report" || id === "graphs") {
+      var r = workResults();
+      out += "<h4>What you have worked out</h4><dl class=\"kv\">" +
+        "<dt>ω<sub>e</sub>′</dt><dd>" + fmt(r.upper.we, 1) + " cm⁻¹</dd>" +
+        "<dt>x<sub>e</sub>′</dt><dd>" + fmt(r.upper.xe, 5) + "</dd>" +
+        "<dt>ω<sub>e</sub>″</dt><dd>" + fmt(r.lower.we, 1) + " cm⁻¹</dd>" +
+        "<dt>x<sub>e</sub>″</dt><dd>" + fmt(r.lower.xe, 5) + "</dd></dl>";
+    }
+
+    return out;
+  }
+
+  /* the student's own wavenumber table, with the direction of the
+     subtraction spelled out for the step they are on */
+  function wavenumberGrid(id) {
+    var e = bandEntries().filter(function (b) { return isFinite(b.nu); });
+    if (!e.length) return "<h4>Your wavenumber table</h4><p class=\"bench-hint\">Nothing converted to cm⁻¹ yet.</p>";
+    var vus = [], vls = [];
+    e.forEach(function (b) {
+      if (vus.indexOf(b.vu) < 0) vus.push(b.vu);
+      if (vls.indexOf(b.vl) < 0) vls.push(b.vl);
+    });
+    vus.sort(function (a, b) { return a - b; });
+    vls.sort(function (a, b) { return a - b; });
+
+    var head = '<tr><th>v′ \\ v″</th>' + vls.map(function (v) { return '<th class="num">' + v + "</th>"; }).join("") + "</tr>";
+    var body = vus.map(function (vu) {
+      return '<tr><th class="num">' + vu + "</th>" + vls.map(function (vl) {
+        var hit = e.filter(function (b) { return b.vu === vu && b.vl === vl; })[0];
+        return hit ? '<td class="num">' + fmt(hit.nu, 1) + "</td>" : '<td class="empty"></td>';
+      }).join("") + "</tr>";
+    }).join("");
+
+    var which = id === "upper"
+      ? "Subtract down a column: ν̃(v′+1, v″) − ν̃(v′, v″)."
+      : id === "lower"
+        ? "Subtract along a row, left minus right: ν̃(v′, v″) − ν̃(v′, v″+1)."
+        : "";
+
+    return "<h4>Your wavenumber table, cm⁻¹</h4>" +
+      (which ? '<p class="bench-hint" style="margin:0 0 6px">' + which + "</p>" : "") +
+      '<div class="tablewrap"><table class="des"><thead>' + head + "</thead><tbody>" + body + "</tbody></table></div>";
+  }
+
   /* ---------- steps ---------- */
 
   var STEPS = [
@@ -209,12 +276,13 @@
      ============================================================ */
 
   function stepAim() {
+    /* Nothing that identifies the last candidate stays on screen: the machine
+       is shared, and the next student should find no trace of the one before. */
     var done = submitted
-      ? '<div class="note"><strong>Submitted.</strong> The record for ' + esc(submitted.register) +
-        ' has gone to the department and the PDF has been downloaded to this device. ' +
-        'Your readings have been cleared, so this page is now a fresh experiment. ' +
-        'A register number can be submitted once: if you open it again with the same number, ' +
-        'the work will not replace what has already been filed.</div>'
+      ? '<div class="note"><strong>Submitted.</strong> The record has gone to the department and ' +
+        'the PDF has been downloaded to this device. The readings and the candidate details have ' +
+        'been cleared from this browser, so this page is a fresh experiment. An experiment may be ' +
+        'submitted once per register number.</div>'
       : "";
     return done +
       '<h2>Vibrational constants of AlO from its electronic band spectrum</h2>' +
@@ -450,20 +518,20 @@
     var chosen = S.pick.map(function (i) { return { i: i, lambda: P.HG_LINES[i].lambda, d: S.hg[i] }; })
       .sort(function (a, b) { return a.lambda - b.lambda; });
 
-    var method = '<div class="card"><h3>The working</h3>' +
+    var method = '<details class="card"><summary><strong>How to solve the three equations</strong></summary>' +
       '<p>Three lines give three equations in λ<sub>0</sub>, C and d<sub>0</sub>. Eliminate λ<sub>0</sub> by subtracting them in pairs:</p>' +
       '<p class="formula">λ₁ − λ₂ = C [ 1/(d₁ − d₀) − 1/(d₂ − d₀) ],  λ₂ − λ₃ = C [ 1/(d₂ − d₀) − 1/(d₃ − d₀) ]</p>' +
       '<p>Divide one by the other and C cancels, leaving one equation in d<sub>0</sub> alone:</p>' +
       '<p class="formula">(λ₁ − λ₂)(d₃ − d₂) ⁄ (λ₂ − λ₃)(d₂ − d₁) = (d₃ − d₀) ⁄ (d₁ − d₀) = R</p>' +
       '<p class="formula">d₀ = (R d₁ − d₃) ⁄ (R − 1)</p>' +
       '<p>Put d<sub>0</sub> back into the first equation for C, then into λ = λ<sub>0</sub> + C ⁄ (d − d<sub>0</sub>) for λ<sub>0</sub>. Work to four decimal places in d<sub>0</sub>: the constants are sensitive to it.</p>' +
-      (chosen.length === 3 ? '<div class="tablewrap"><table><caption>Your three equations</caption>' +
+      (chosen.length === 3 ? '<div class="tablewrap" style="margin-top:10px"><table><caption>Your three equations</caption>' +
         '<thead><tr><th>Line</th><th class="num">λ (Å)</th><th class="num">d (cm)</th></tr></thead><tbody>' +
         chosen.map(function (c, k) {
           return '<tr><td>' + ["λ₁, d₁", "λ₂, d₂", "λ₃, d₃"][k] + '</td><td class="num">' +
             fmt(c.lambda, 2) + '</td><td class="num">' + fmt(c.d, 3) + '</td></tr>';
         }).join("") + '</tbody></table></div>' : "") +
-      '</div>';
+      '</details>';
 
     var h = studentHartmann();
     var entry = '<div class="card"><h3>Your constants</h3>' +
@@ -554,9 +622,10 @@
     var done = bandEntries().length;
     return '' +
       '<h2>AlO band heads</h2>' +
-      '<p>Each band is shaded to the red: a sharp edge on the violet side, fading away towards longer wavelength. Set the crosswire on that sharp edge — that is the band head. The five groups on the plate are the sequences Δv = +2, +1, 0, −1, −2; within a group the bands run in order of v′.</p>' +
-      '<p>Record the reading, then substitute it into <em>your</em> constants and enter the wavelength you get. Keep two decimal places: the differences you take later are worth a few cm⁻¹, and rounding here will swamp them.</p>' +
+      '<p>Set the crosswire on the sharp violet edge of each band, record it, then work out the wavelength from <em>your</em> constants and enter it to two decimal places.</p>' +
       '<p class="formula">λ = ' + fmt(h.lam0, 2) + ' + (' + fmt(h.C, 1) + ') ⁄ (d − ' + fmt(h.d0, 4) + ')</p>' +
+      '<details style="margin-bottom:12px"><summary>Finding your way round the plate</summary>' +
+      '<p style="margin-top:8px">Each band is shaded to the red: a sharp edge on the violet side, fading away towards longer wavelength. That edge is the head. The five groups are the sequences Δv = +2, +1, 0, −1, −2; within a group the bands run in order of v′. Two decimal places on λ matter — the differences you take later are worth a few cm⁻¹, and rounding here will swamp them.</p></details>' +
       '<div class="progress" style="margin-bottom:10px">' + done + ' of ' + req.length + ' bands of the main block recorded</div>' +
       body + tallyNote(tally(checks), "Record a head, then work out its wavelength.") + nav();
   }
@@ -606,7 +675,7 @@
       '<p class="formula">ν̃ (cm⁻¹) = 10⁸ ⁄ λ (Å)</p>' +
       wavenumbers +
       tallyNote(tally(checks), "Convert each wavelength in the table above.") +
-      '<div class="note">Read across a row: the spacing between neighbouring columns is a vibrational quantum of the lower state. Read down a column: the spacing between neighbouring rows belongs to the upper state.</div>' +
+      '<div class="note"><strong>Which way to subtract.</strong> Down a column — successive rows, v′ rising while v″ stays put — leaves a quantum of the <em>upper</em> state, about 860 cm⁻¹ here. Along a row — successive columns, v″ rising while v′ stays put — leaves a quantum of the <em>lower</em> state, about 965 cm⁻¹, and since ν̃ falls to the right you take the left entry minus the right one. The two are easy to swap, and the sizes are the giveaway.</div>' +
       nav();
   }
 
@@ -619,84 +688,173 @@
     var key = which === "upper" ? "up" : "lo";
     var w = S.work[key];
     var pr = which === "upper" ? "′" : "″";
+    var other = which === "upper" ? "lower" : "upper";
     var lit = which === "upper"
       ? { we: P.LIT.we_u, wexe: P.LIT.wexe_u, xe: P.LIT.xe_u }
       : { we: P.LIT.we_l, wexe: P.LIT.wexe_l, xe: P.LIT.xe_l };
-    var along = which === "upper" ? "column" : "row";
+
+    /* The manual's wording, and the operation it amounts to on the table.
+       Upper state: successive ROWS, which means two entries one above the
+       other, in the same column. Lower state: successive COLUMNS, two
+       entries side by side in the same row, left minus right. */
+    var says = which === "upper"
+      ? {
+        manual: "the separation between two successive rows",
+        how: "two entries one above the other in the same column",
+        cell: function (v) { return "ν̃(" + (v + 1) + ", v″) − ν̃(" + v + ", v″)"; },
+        index: "v″", wrongWay: "row"
+      }
+      : {
+        manual: "the separation between two successive columns",
+        how: "two entries side by side in the same row, the left one minus the right one",
+        cell: function (v) { return "ν̃(v′, " + v + ") − ν̃(v′, " + (v + 1) + ")"; },
+        index: "v′", wrongWay: "column"
+      };
 
     if (!a || !a[which].first.length) {
-      return '<div class="note warn">Not enough of the wavenumber table is filled in yet. You need at least three successive ' +
-        (which === "upper" ? "rows" : "columns") + ' of it before the differences can be taken.</div>';
+      return '<div class="note warn">Not enough of the wavenumber table is filled in yet. ' +
+        'For the ' + (which === "upper" ? "upper" : "lower") + ' state you need entries in ' +
+        (which === "upper" ? "successive rows of the same column" : "successive columns of the same row") +
+        ' before any difference can be taken.</div>';
     }
-    var st = a[which];
-    var checks = [];
+    var st = a[which], stOther = a[other];
+    var checks = [], notes = [];
 
-    /* the pairs the student should subtract, straight from their own table */
-    var pairs = st.first.slice(0, 3).map(function (f, i) {
-      var terms = f.terms.map(function (t) {
-        var idx = t.vl !== undefined ? t.vl : t.vu;
-        return (which === "upper" ? "v″ = " : "v′ = ") + idx;
-      });
-      return { i: i, v: f.v, expected: f.value, terms: terms };
-    });
+    /* Intervals are addressed by name, never by position: ΔG(½) is always
+       the first box, whether or not the table happens to offer it. */
+    var byV = {};
+    st.first.forEach(function (f) { byV[f.v] = f; });
 
-    var rows = pairs.map(function (p) {
-      var c = check(w.dg[p.i], p.expected, 2.0);
+    function accept(f) {
+      /* the mean of the columns, and each column on its own: a student who
+         works from one column of the table is doing exactly what the manual
+         asks, and must not be told otherwise */
+      return [f.value].concat(f.terms.map(function (t) { return t.value; }));
+    }
+
+    function checkAgainst(typed, values, tol) {
+      var t = numOf(typed);
+      if (!isFinite(t)) return { state: "empty" };
+      if (!values.length) return { state: "unknown" };
+      var best = Infinity;
+      values.forEach(function (v) { best = Math.min(best, Math.abs(t - v)); });
+      return { state: best <= tol ? "ok" : "off", off: best, typed: t };
+    }
+
+    /* why a value is wrong, where the app can tell */
+    function whyFirst(c, f) {
+      if (!c || c.state !== "off") return null;
+      var t = c.typed;
+      if (t < 0 && Math.abs(Math.abs(t) - f.value) < 3) {
+        return "ΔG" + pr + "(" + f.v + " + ½) came out negative — you have subtracted the two entries the wrong way round.";
+      }
+      var o = stOther.first.filter(function (g) { return g.v === f.v; })[0];
+      if (o && Math.abs(t - o.value) < 4) {
+        return "ΔG" + pr + "(" + f.v + " + ½) is the size of a quantum of the other state. You have taken the difference along a " +
+          says.wrongWay + "; for this state it is " + says.how + ".";
+      }
+      return "ΔG" + pr + "(" + f.v + " + ½) does not match any difference in your own table. Re-do the subtraction: " + says.cell(f.v) + ".";
+    }
+
+    var rows = [0, 1, 2].map(function (v) {
+      var f = byV[v];
+      if (!f) {
+        return '<tr class="pending"><td>ΔG' + pr + "(" + v + " + ½)</td>" +
+          '<td colspan="2">Not available from your table yet — you need ' +
+          (which === "upper" ? "bands in rows " + v + " and " + (v + 1) + " of the same column"
+            : "bands in columns " + v + " and " + (v + 1) + " of the same row") + ".</td></tr>";
+      }
+      var c = checkAgainst(w.dg[v], accept(f), 1.5);
       checks.push(c);
-      return '<tr><td>ΔG' + pr + '(' + p.v + ' + ½) = G' + pr + '(' + (p.v + 1) + ') − G' + pr + '(' + p.v + ')</td>' +
-        '<td>' + esc(p.terms.join(",  ")) + '</td>' +
-        '<td class="num">' + numInput("dg-" + key, String(p.i), w.dg[p.i]) + " " + mark(c, "this difference does not match your own table") + '</td></tr>';
+      var note = whyFirst(c, f);
+      if (note) notes.push(note);
+      var where = f.terms.map(function (t) {
+        return says.index + " = " + (t.vl !== undefined ? t.vl : t.vu);
+      }).join(", ");
+      return "<tr><td>ΔG" + pr + "(" + v + " + ½) = G" + pr + "(" + (v + 1) + ") − G" + pr + "(" + v + ")</td>" +
+        "<td>" + esc(says.cell(v)) + "<br><small>available for " + esc(where) + "</small></td>" +
+        '<td class="num">' + numInput("dg-" + key, String(v), w.dg[v]) + " " + mark(c) + "</td></tr>";
     }).join("");
 
-    var dgs = w.dg.map(numOf);
-    var expD2 = (isFinite(dgs[0]) && isFinite(dgs[1])) ? dgs[0] - dgs[1] : NaN;
-    var cD2 = check(w.d2, expD2, 1.0);
-    var expWexe = isFinite(numOf(w.d2)) ? numOf(w.d2) / 2 : NaN;
-    var cWexe = check(w.wexe, expWexe, 0.6);
-    var expWe = (isFinite(dgs[0]) && isFinite(numOf(w.d2))) ? dgs[0] + numOf(w.d2) : NaN;
-    var cWe = check(w.we, expWe, 1.5);
-    var expXe = (isFinite(numOf(w.wexe)) && isFinite(numOf(w.we)) && numOf(w.we)) ? numOf(w.wexe) / numOf(w.we) : NaN;
-    var cXe = check(w.xe, expXe, 0.0004);
+    /* everything below follows from the three boxes above, using the
+       student's own figures — never the app's */
+    var dg0 = numOf(w.dg[0]), dg1 = numOf(w.dg[1]), d2 = numOf(w.d2);
+    var expD2 = (isFinite(dg0) && isFinite(dg1)) ? dg0 - dg1 : NaN;
+    var cD2 = check(w.d2, expD2, 0.8);
+    var expWexe = isFinite(d2) ? d2 / 2 : NaN;
+    var cWexe = check(w.wexe, expWexe, 0.4);
+    var expWe = (isFinite(dg0) && isFinite(d2)) ? dg0 + d2 : NaN;
+    var cWe = check(w.we, expWe, 1.0);
+    var wexe = numOf(w.wexe), we = numOf(w.we);
+    var expXe = (isFinite(wexe) && isFinite(we) && we) ? wexe / we : NaN;
+    var cXe = check(w.xe, expXe, 0.0003);
     checks.push(cD2, cWexe, cWe, cXe);
+
+    if (cWexe.state === "off" && isFinite(d2) && Math.abs(wexe - d2) < 0.4) {
+      notes.push("ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr + " is your Δ²G" + pr + " itself. The second difference is 2ω<sub>e</sub>x<sub>e</sub>, so halve it.");
+    }
+    if (cWe.state === "off" && isFinite(dg0) && Math.abs(we - dg0) < 1.0) {
+      notes.push("ω<sub>e</sub>" + pr + " is your first difference on its own. Add the whole second difference to it, not half of it.");
+    }
+    if (cXe.state === "off" && isFinite(expXe) && expXe && Math.abs(numOf(w.xe) - 1 / expXe) / (1 / expXe) < 0.05) {
+      notes.push("x<sub>e</sub>" + pr + " is the ratio the other way up. It is ω<sub>e</sub>x<sub>e</sub> divided by ω<sub>e</sub>, so it comes out small — a few thousandths.");
+    }
+    if (cD2.state === "off" && isFinite(expD2) && numOf(w.d2) < 0) {
+      notes.push("Δ²G" + pr + " should be positive: it is the first difference minus the second, and the quanta shrink as v rises.");
+    }
 
     var second = '<div class="tablewrap"><table><caption>Second difference and the constants</caption>' +
       '<thead><tr><th>Quantity</th><th>From</th><th class="num">Your value</th></tr></thead><tbody>' +
-      '<tr><td>Δ²G' + pr + ' = ΔG' + pr + '(½) − ΔG' + pr + '(3/2)</td><td>your two differences above</td>' +
-      '<td class="num">' + numInput("d2-" + key, "d2", w.d2) + " " + mark(cD2) + '</td></tr>' +
-      '<tr><td>ω<sub>e</sub>' + pr + 'x<sub>e</sub>' + pr + ' = Δ²G' + pr + ' ⁄ 2</td><td>half of the line above</td>' +
-      '<td class="num">' + numInput("d2-" + key, "wexe", w.wexe) + " " + mark(cWexe) + '</td></tr>' +
-      '<tr><td>ω<sub>e</sub>' + pr + ' = ΔG' + pr + '(½) + 2ω<sub>e</sub>' + pr + 'x<sub>e</sub>' + pr + '</td><td>first difference plus the second difference</td>' +
-      '<td class="num">' + numInput("d2-" + key, "we", w.we) + " " + mark(cWe) + '</td></tr>' +
-      '<tr><td>x<sub>e</sub>' + pr + ' = ω<sub>e</sub>' + pr + 'x<sub>e</sub>' + pr + ' ⁄ ω<sub>e</sub>' + pr + '</td><td>the two lines above</td>' +
-      '<td class="num">' + numInput("d2-" + key, "xe", w.xe) + " " + mark(cXe) + '</td></tr>' +
-      '</tbody></table></div>';
+      "<tr><td>Δ²G" + pr + " = ΔG" + pr + "(½) − ΔG" + pr + "(3/2) = 2ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr + "</td>" +
+      "<td>the first two boxes above</td>" +
+      '<td class="num">' + numInput("d2-" + key, "d2", w.d2) + " " + mark(cD2) + "</td></tr>" +
+      "<tr><td>ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr + " = Δ²G" + pr + " ⁄ 2</td><td>half of the line above</td>" +
+      '<td class="num">' + numInput("d2-" + key, "wexe", w.wexe) + " " + mark(cWexe) + "</td></tr>" +
+      "<tr><td>ω<sub>e</sub>" + pr + " = ΔG" + pr + "(½) + 2ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr + "</td>" +
+      "<td>the first box plus the whole second difference</td>" +
+      '<td class="num">' + numInput("d2-" + key, "we", w.we) + " " + mark(cWe) + "</td></tr>" +
+      "<tr><td>x<sub>e</sub>" + pr + " = ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr + " ⁄ ω<sub>e</sub>" + pr + "</td><td>the two lines above</td>" +
+      '<td class="num">' + numInput("d2-" + key, "xe", w.xe) + " " + mark(cXe) + "</td></tr>" +
+      "</tbody></table></div>";
 
     var strip = "";
-    if (isFinite(numOf(w.we))) {
+    if (isFinite(we)) {
       strip = '<div class="result-strip">' +
-        resultCell("ω<sub>e</sub>" + pr, fmt(numOf(w.we), 1) + " cm⁻¹", "literature " + fmt(lit.we, 1)) +
-        resultCell("ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr, fmt(numOf(w.wexe), 2) + " cm⁻¹", "literature " + fmt(lit.wexe, 2)) +
+        resultCell("ω<sub>e</sub>" + pr, fmt(we, 1) + " cm⁻¹", "literature " + fmt(lit.we, 1)) +
+        resultCell("ω<sub>e</sub>" + pr + "x<sub>e</sub>" + pr, fmt(wexe, 2) + " cm⁻¹", "literature " + fmt(lit.wexe, 2)) +
         resultCell("x<sub>e</sub>" + pr, fmt(numOf(w.xe), 5), "literature " + fmt(lit.xe, 5)) +
-        '</div>';
+        "</div>";
     }
 
-    return '<p>Take each difference from your own wavenumber table: subtract two entries in the same ' + along +
-      '. Where a ' + along + ' gives more than one value for the same interval, average them and enter the mean.</p>' +
-      '<div class="tablewrap"><table><caption>First differences ΔG' + pr + '(v + ½), in cm⁻¹</caption>' +
-      '<thead><tr><th>Interval</th><th>Available from ' + (which === "upper" ? "columns" : "rows") + '</th><th class="num">Your value</th></tr></thead>' +
-      '<tbody>' + rows + '</tbody></table></div>' +
-      second + strip +
+    var advice = notes.length
+      ? '<div class="note bad"><strong>What to look at:</strong><ul><li>' + notes.join("</li><li>") + "</li></ul></div>"
+      : "";
+
+    var lookBack = '<div class="recordbar noprint" style="margin:0 0 12px">' +
+      '<button class="ghost" data-action="showRef">Show my wavenumber table</button>' +
+      '<button class="ghost" data-action="showCalc">Calculator</button>' +
+      '<span class="progress">Both stay open while you type.</span></div>';
+
+    return lookBack + '<div class="note">' + says.manual.charAt(0).toUpperCase() + says.manual.slice(1) +
+      " of the Deslandre table is a vibrational quantum of this state. On the table that means " + says.how + ".</div>" +
+      "<p>Take each difference from your own wavenumber table. Where more than one " +
+      (which === "upper" ? "column" : "row") +
+      " offers the same interval you may use any of them, or their mean — they should agree to about a wavenumber.</p>" +
+      '<div class="tablewrap"><table><caption>First differences ΔG' + pr + "(v + ½), in cm⁻¹</caption>" +
+      "<thead><tr><th>Interval</th><th>Subtract, on your table</th><th class=\"num\">Your value</th></tr></thead>" +
+      "<tbody>" + rows + "</tbody></table></div>" +
+      second + strip + advice +
       tallyNote(tally(checks), "Work down the tables above.") +
-      '<div class="card">' + workBox(key, "Your working — subtractions, averages and the substitution into each formula") + '</div>';
+      '<div class="card">' + workBox(key, "Your working — the subtractions, any averaging, and the substitution into each formula") + "</div>";
   }
 
   function stepUpper() {
     return '<h2>Vibrational quanta of the upper state B²Σ⁺</h2>' + stateStep("upper") +
-      '<div class="note">Each ΔG′ comes from subtracting two entries in the same column of your wavenumber table, so a column missing a band simply contributes nothing to that average.</div>' + nav();
+      '<div class="note">Moving down a column means going up the v′ ladder while v″ stays put, so what is left is a quantum of the upper state. A column that is missing a band simply offers that interval one time fewer.</div>' + nav();
   }
   function stepLower() {
     return '<h2>Vibrational quanta of the lower state X²Σ⁺</h2>' + stateStep("lower") +
-      '<div class="note">Here the differences run along a row. Note that ν̃ falls as v″ rises, so the difference is the left entry minus the right one.</div>' + nav();
+      '<div class="note">Moving along a row means going up the v″ ladder while v′ stays put. Note that ν̃ <em>falls</em> as v″ rises, so the left entry minus the right one gives a positive quantum.</div>' + nav();
   }
 
   function resultCell(label, value, extra) {
@@ -802,6 +960,7 @@
     }
     return '<h2>Result</h2>' + resultTable(r) +
       '<p>Both quanta should be a few hundred cm⁻¹ up on a thousand, with the ground state the larger of the two, and both anharmonicities small, positive and around half a per cent of ω<sub>e</sub>. If yours are not, the fault is upstream: go back to the difference that is marked ✗.</p>' +
+      '<div class="note"><strong>How close should you expect to be?</strong> ω<sub>e</sub> comes straight from a first difference and should land within a few tenths of a per cent. x<sub>e</sub> does not: it rests on Δ²G, a difference of differences of about 7 cm⁻¹, and one least count on a single head is already 0.4 cm⁻¹. Five to ten per cent on x<sub>e</sub> is a good result at this least count, and is a statement about the instrument rather than about your arithmetic. Averaging every column an interval offers, and measuring the fainter bands as well, is the only way to do better.</div>' +
       '<div class="card"><label class="field"><span>Sources of error and remarks</span>' +
       '<textarea data-answer="errors" placeholder="Setting the crosswire on a shaded band head, choice of mercury lines, rounding in the conversion to cm⁻¹, the assumption that the second difference is constant…">' + esc(S.answers.errors) + '</textarea></label></div>' +
       nav();
@@ -936,6 +1095,8 @@
     if (s.id === "report") root.Report.render(el("reportHost"));
     var who = el("whoami");
     if (who) who.textContent = S.student.register ? (S.student.name || "") + "  ·  " + S.student.register : "";
+    if (submitted && who) who.textContent = "";
+    if (root.BenchTools) root.BenchTools.refresh();
     root.scrollTo({ top: 0 });
     save();
   }
@@ -1004,7 +1165,6 @@
   function finish() {
     var reg = S.student.register;
     try { localStorage.removeItem(saveKey()); localStorage.removeItem("aloLab.last"); } catch (e) {}
-    var name = S.student.name;
     S.student = { name: "", register: "", batch: "", partner: "", date: today() };
     S.hg = {}; S.pick = []; S.bands = {};
     S.work = {
@@ -1015,7 +1175,7 @@
     };
     S.answers = { q1: "", q2: "", q3: "", q4: "", errors: "" };
     plate = null;
-    submitted = { register: reg, name: name };
+    submitted = true;              // a flag, not a record of who it was
     step = 0;
     render();
   }
@@ -1046,6 +1206,8 @@
     }
     if (a === "recordBand") { S.bands[t.dataset.k] = recordCurrent(); save(); render(); return; }
     if (a === "clearBand") { delete S.bands[t.dataset.k]; save(); render(); return; }
+    if (a === "showRef") { if (root.BenchTools) root.BenchTools.open("ref"); return; }
+    if (a === "showCalc") { if (root.BenchTools) root.BenchTools.open("calc"); return; }
     if (a === "print") { root.print(); return; }
     if (a === "dlpdf") { root.Report.downloadPDF(el("submitMsg")); return; }
     if (a === "submit") { root.Report.submit(el("submitMsg")); return; }
@@ -1107,7 +1269,9 @@
     var a = analysis();
     ["upper", "lower"].forEach(function (w) {
       var key = w === "upper" ? "up" : "lo", st = a[w];
-      S.work[key].dg = [0, 1, 2].map(function (i) { return st.first[i] ? st.first[i].value.toFixed(1) : ""; });
+      var byV = {};
+      st.first.forEach(function (f) { byV[f.v] = f; });
+      S.work[key].dg = [0, 1, 2].map(function (v) { return byV[v] ? byV[v].value.toFixed(1) : ""; });
       var d2 = numOf(S.work[key].dg[0]) - numOf(S.work[key].dg[1]);
       S.work[key].d2 = d2.toFixed(2);
       S.work[key].wexe = (d2 / 2).toFixed(2);
@@ -1121,6 +1285,7 @@
   /* ---------- boot ---------- */
 
   function boot() {
+    if (root.BenchTools) root.BenchTools.init({ reference: referenceHTML });
     if (root.VirtualLab) {
       root.VirtualLab.masthead(el("masthead"));
       root.VirtualLab.applyMeta(function (changed) {

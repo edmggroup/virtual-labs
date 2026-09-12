@@ -185,6 +185,73 @@
       esc(value === undefined || value === null ? "" : value) + '"' + (extra || "") + '>';
   }
 
+  /* ---------- what the tools panel has to hand ----------
+     Whatever the student worked out on an earlier step and needs in front
+     of them on this one — so nothing has to be memorised or scrolled back to. */
+
+  function referenceHTML() {
+    var id = STEPS[step] ? STEPS[step].id : "";
+    var H = studentHartmann();
+    var out = "";
+
+    if (["heads", "deslandre", "upper", "lower", "graphs", "result", "report"].indexOf(id) >= 0 && H) {
+      out += "<h4>Your Hartmann constants</h4>" +
+        '<p class="formula" style="font-size:.86rem">λ = ' + fmt(H.lam0, 2) + " + (" + fmt(H.C, 1) +
+        ") ⁄ (d − " + fmt(H.d0, 4) + ")</p>";
+    }
+
+    if (id === "upper" || id === "lower" || id === "graphs" || id === "result") {
+      out += wavenumberGrid(id);
+    }
+
+    if (id === "deslandre") {
+      out += "<h4>Converting</h4><p class=\"formula\" style=\"font-size:.86rem\">ν̃ = 10⁸ ⁄ λ</p>";
+    }
+
+    if (id === "result" || id === "report" || id === "graphs") {
+      var r = workResults();
+      out += "<h4>What you have worked out</h4><dl class=\"kv\">" +
+        "<dt>ω<sub>e</sub>′</dt><dd>" + fmt(r.upper.we, 1) + " cm⁻¹</dd>" +
+        "<dt>x<sub>e</sub>′</dt><dd>" + fmt(r.upper.xe, 5) + "</dd>" +
+        "<dt>ω<sub>e</sub>″</dt><dd>" + fmt(r.lower.we, 1) + " cm⁻¹</dd>" +
+        "<dt>x<sub>e</sub>″</dt><dd>" + fmt(r.lower.xe, 5) + "</dd></dl>";
+    }
+
+    return out;
+  }
+
+  /* the student's own wavenumber table, with the direction of the
+     subtraction spelled out for the step they are on */
+  function wavenumberGrid(id) {
+    var e = bandEntries().filter(function (b) { return isFinite(b.nu); });
+    if (!e.length) return "<h4>Your wavenumber table</h4><p class=\"bench-hint\">Nothing converted to cm⁻¹ yet.</p>";
+    var vus = [], vls = [];
+    e.forEach(function (b) {
+      if (vus.indexOf(b.vu) < 0) vus.push(b.vu);
+      if (vls.indexOf(b.vl) < 0) vls.push(b.vl);
+    });
+    vus.sort(function (a, b) { return a - b; });
+    vls.sort(function (a, b) { return a - b; });
+
+    var head = '<tr><th>v′ \\ v″</th>' + vls.map(function (v) { return '<th class="num">' + v + "</th>"; }).join("") + "</tr>";
+    var body = vus.map(function (vu) {
+      return '<tr><th class="num">' + vu + "</th>" + vls.map(function (vl) {
+        var hit = e.filter(function (b) { return b.vu === vu && b.vl === vl; })[0];
+        return hit ? '<td class="num">' + fmt(hit.nu, 1) + "</td>" : '<td class="empty"></td>';
+      }).join("") + "</tr>";
+    }).join("");
+
+    var which = id === "upper"
+      ? "Subtract down a column: ν̃(v′+1, v″) − ν̃(v′, v″)."
+      : id === "lower"
+        ? "Subtract along a row, left minus right: ν̃(v′, v″) − ν̃(v′, v″+1)."
+        : "";
+
+    return "<h4>Your wavenumber table, cm⁻¹</h4>" +
+      (which ? '<p class="bench-hint" style="margin:0 0 6px">' + which + "</p>" : "") +
+      '<div class="tablewrap"><table class="des"><thead>' + head + "</thead><tbody>" + body + "</tbody></table></div>";
+  }
+
   /* ---------- steps ---------- */
 
   var STEPS = [
@@ -209,12 +276,13 @@
      ============================================================ */
 
   function stepAim() {
+    /* Nothing that identifies the last candidate stays on screen: the machine
+       is shared, and the next student should find no trace of the one before. */
     var done = submitted
-      ? '<div class="note"><strong>Submitted.</strong> The record for ' + esc(submitted.register) +
-        ' has gone to the department and the PDF has been downloaded to this device. ' +
-        'Your readings have been cleared, so this page is now a fresh experiment. ' +
-        'A register number can be submitted once: if you open it again with the same number, ' +
-        'the work will not replace what has already been filed.</div>'
+      ? '<div class="note"><strong>Submitted.</strong> The record has gone to the department and ' +
+        'the PDF has been downloaded to this device. The readings and the candidate details have ' +
+        'been cleared from this browser, so this page is a fresh experiment. An experiment may be ' +
+        'submitted once per register number.</div>'
       : "";
     return done +
       '<h2>Vibrational constants of AlO from its electronic band spectrum</h2>' +
@@ -450,20 +518,20 @@
     var chosen = S.pick.map(function (i) { return { i: i, lambda: P.HG_LINES[i].lambda, d: S.hg[i] }; })
       .sort(function (a, b) { return a.lambda - b.lambda; });
 
-    var method = '<div class="card"><h3>The working</h3>' +
+    var method = '<details class="card"><summary><strong>How to solve the three equations</strong></summary>' +
       '<p>Three lines give three equations in λ<sub>0</sub>, C and d<sub>0</sub>. Eliminate λ<sub>0</sub> by subtracting them in pairs:</p>' +
       '<p class="formula">λ₁ − λ₂ = C [ 1/(d₁ − d₀) − 1/(d₂ − d₀) ],  λ₂ − λ₃ = C [ 1/(d₂ − d₀) − 1/(d₃ − d₀) ]</p>' +
       '<p>Divide one by the other and C cancels, leaving one equation in d<sub>0</sub> alone:</p>' +
       '<p class="formula">(λ₁ − λ₂)(d₃ − d₂) ⁄ (λ₂ − λ₃)(d₂ − d₁) = (d₃ − d₀) ⁄ (d₁ − d₀) = R</p>' +
       '<p class="formula">d₀ = (R d₁ − d₃) ⁄ (R − 1)</p>' +
       '<p>Put d<sub>0</sub> back into the first equation for C, then into λ = λ<sub>0</sub> + C ⁄ (d − d<sub>0</sub>) for λ<sub>0</sub>. Work to four decimal places in d<sub>0</sub>: the constants are sensitive to it.</p>' +
-      (chosen.length === 3 ? '<div class="tablewrap"><table><caption>Your three equations</caption>' +
+      (chosen.length === 3 ? '<div class="tablewrap" style="margin-top:10px"><table><caption>Your three equations</caption>' +
         '<thead><tr><th>Line</th><th class="num">λ (Å)</th><th class="num">d (cm)</th></tr></thead><tbody>' +
         chosen.map(function (c, k) {
           return '<tr><td>' + ["λ₁, d₁", "λ₂, d₂", "λ₃, d₃"][k] + '</td><td class="num">' +
             fmt(c.lambda, 2) + '</td><td class="num">' + fmt(c.d, 3) + '</td></tr>';
         }).join("") + '</tbody></table></div>' : "") +
-      '</div>';
+      '</details>';
 
     var h = studentHartmann();
     var entry = '<div class="card"><h3>Your constants</h3>' +
@@ -554,9 +622,10 @@
     var done = bandEntries().length;
     return '' +
       '<h2>AlO band heads</h2>' +
-      '<p>Each band is shaded to the red: a sharp edge on the violet side, fading away towards longer wavelength. Set the crosswire on that sharp edge — that is the band head. The five groups on the plate are the sequences Δv = +2, +1, 0, −1, −2; within a group the bands run in order of v′.</p>' +
-      '<p>Record the reading, then substitute it into <em>your</em> constants and enter the wavelength you get. Keep two decimal places: the differences you take later are worth a few cm⁻¹, and rounding here will swamp them.</p>' +
+      '<p>Set the crosswire on the sharp violet edge of each band, record it, then work out the wavelength from <em>your</em> constants and enter it to two decimal places.</p>' +
       '<p class="formula">λ = ' + fmt(h.lam0, 2) + ' + (' + fmt(h.C, 1) + ') ⁄ (d − ' + fmt(h.d0, 4) + ')</p>' +
+      '<details style="margin-bottom:12px"><summary>Finding your way round the plate</summary>' +
+      '<p style="margin-top:8px">Each band is shaded to the red: a sharp edge on the violet side, fading away towards longer wavelength. That edge is the head. The five groups are the sequences Δv = +2, +1, 0, −1, −2; within a group the bands run in order of v′. Two decimal places on λ matter — the differences you take later are worth a few cm⁻¹, and rounding here will swamp them.</p></details>' +
       '<div class="progress" style="margin-bottom:10px">' + done + ' of ' + req.length + ' bands of the main block recorded</div>' +
       body + tallyNote(tally(checks), "Record a head, then work out its wavelength.") + nav();
   }
@@ -761,7 +830,12 @@
       ? '<div class="note bad"><strong>What to look at:</strong><ul><li>' + notes.join("</li><li>") + "</li></ul></div>"
       : "";
 
-    return '<div class="note">' + says.manual.charAt(0).toUpperCase() + says.manual.slice(1) +
+    var lookBack = '<div class="recordbar noprint" style="margin:0 0 12px">' +
+      '<button class="ghost" data-action="showRef">Show my wavenumber table</button>' +
+      '<button class="ghost" data-action="showCalc">Calculator</button>' +
+      '<span class="progress">Both stay open while you type.</span></div>';
+
+    return lookBack + '<div class="note">' + says.manual.charAt(0).toUpperCase() + says.manual.slice(1) +
       " of the Deslandre table is a vibrational quantum of this state. On the table that means " + says.how + ".</div>" +
       "<p>Take each difference from your own wavenumber table. Where more than one " +
       (which === "upper" ? "column" : "row") +
@@ -1021,6 +1095,8 @@
     if (s.id === "report") root.Report.render(el("reportHost"));
     var who = el("whoami");
     if (who) who.textContent = S.student.register ? (S.student.name || "") + "  ·  " + S.student.register : "";
+    if (submitted && who) who.textContent = "";
+    if (root.BenchTools) root.BenchTools.refresh();
     root.scrollTo({ top: 0 });
     save();
   }
@@ -1089,7 +1165,6 @@
   function finish() {
     var reg = S.student.register;
     try { localStorage.removeItem(saveKey()); localStorage.removeItem("aloLab.last"); } catch (e) {}
-    var name = S.student.name;
     S.student = { name: "", register: "", batch: "", partner: "", date: today() };
     S.hg = {}; S.pick = []; S.bands = {};
     S.work = {
@@ -1100,7 +1175,7 @@
     };
     S.answers = { q1: "", q2: "", q3: "", q4: "", errors: "" };
     plate = null;
-    submitted = { register: reg, name: name };
+    submitted = true;              // a flag, not a record of who it was
     step = 0;
     render();
   }
@@ -1131,6 +1206,8 @@
     }
     if (a === "recordBand") { S.bands[t.dataset.k] = recordCurrent(); save(); render(); return; }
     if (a === "clearBand") { delete S.bands[t.dataset.k]; save(); render(); return; }
+    if (a === "showRef") { if (root.BenchTools) root.BenchTools.open("ref"); return; }
+    if (a === "showCalc") { if (root.BenchTools) root.BenchTools.open("calc"); return; }
     if (a === "print") { root.print(); return; }
     if (a === "dlpdf") { root.Report.downloadPDF(el("submitMsg")); return; }
     if (a === "submit") { root.Report.submit(el("submitMsg")); return; }
@@ -1208,6 +1285,7 @@
   /* ---------- boot ---------- */
 
   function boot() {
+    if (root.BenchTools) root.BenchTools.init({ reference: referenceHTML });
     if (root.VirtualLab) {
       root.VirtualLab.masthead(el("masthead"));
       root.VirtualLab.applyMeta(function (changed) {

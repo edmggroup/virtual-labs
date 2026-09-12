@@ -210,9 +210,9 @@
 
   function stepAim() {
     var done = submitted
-      ? '<div class="note"><strong>Submitted.</strong> The record for ' + esc(submitted) +
-        ' has gone to the department and the PDF has been downloaded. The readings have been ' +
-        'cleared, so this is a fresh experiment. A register number can be submitted once.</div>'
+      ? '<div class="note"><strong>Submitted.</strong> The record has gone to the department and the ' +
+        'PDF has been downloaded. The readings and the candidate details have been cleared, so this ' +
+        'is a fresh experiment. An experiment may be submitted once per register number.</div>'
       : "";
     var theory = (spec.theory || []).map(function (t) { return "<p>" + esc(t) + "</p>"; }).join("");
     var shown = (spec.formulae || []).map(function (f) { return '<p class="formula">' + esc(f) + "</p>"; }).join("");
@@ -307,6 +307,9 @@
     }).join("");
 
     return "<h2>Calculations</h2>" +
+      '<div class="recordbar noprint" style="margin:0 0 12px">' +
+      '<button class="ghost" data-act="showRef">Show my readings</button>' +
+      '<button class="ghost" data-act="showCalc">Calculator</button></div>' +
       "<p>Work each one out from your own table and enter it. The formula is beside it; the mark tells you whether your figure follows from your readings, not whether it matches an expected answer.</p>" +
       '<div class="tablewrap"><table><caption>Quantities to be worked out</caption>' +
       '<thead><tr><th>Quantity</th><th>From</th><th class="num">Your value</th><th class="num">Unit</th></tr></thead>' +
@@ -489,6 +492,38 @@
     return out;
   }
 
+  /* ---------- what the tools panel has to hand ---------- */
+
+  function referenceHTML() {
+    var id = steps()[step] ? steps()[step].id : "";
+    if (id === "aim" || id === "obs") {
+      return (spec.constants || []).length
+        ? "<h4>Constants</h4><dl class=\"kv\">" + spec.constants.map(function (c) {
+          return "<dt>" + esc(c.key) + "</dt><dd>" + esc(c.value) + " " + esc(c.unit || "") + "</dd>";
+        }).join("") + "</dl>"
+        : "";
+    }
+    var cs = columns();
+    if (!cs.length) return "";
+    var head = "<tr><th>No.</th>" + cs.map(function (c) {
+      return '<th class="num">' + esc(c.label || c.key) + "</th>";
+    }).join("") + "</tr>";
+    var body = "";
+    for (var r = 0; r < rowCount(); r++) {
+      body += "<tr><td>" + (r + 1) + "</td>" + cs.map(function (c) {
+        var v = S.cells[r + ":" + c.key];
+        return '<td class="num">' + esc(v == null || v === "" ? "—" : v) + "</td>";
+      }).join("") + "</tr>";
+    }
+    var consts = (spec.constants || []).length
+      ? "<h4>Constants</h4><dl class=\"kv\">" + spec.constants.map(function (c) {
+        return "<dt>" + esc(c.key) + "</dt><dd>" + esc(c.value) + " " + esc(c.unit || "") + "</dd>";
+      }).join("") + "</dl>"
+      : "";
+    return "<h4>Your readings</h4><div class=\"tablewrap\"><table><thead>" + head +
+      "</thead><tbody>" + body + "</tbody></table></div>" + consts;
+  }
+
   /* ---------- rendering ---------- */
 
   function render() {
@@ -506,7 +541,8 @@
     }).join("");
 
     var who = el("whoami");
-    if (who) who.textContent = S.student.register ? (S.student.name || "") + "  ·  " + S.student.register : "";
+    if (who) who.textContent = submitted || !S.student.register
+      ? "" : (S.student.name || "") + "  ·  " + S.student.register;
 
     if (L[step].id === "graph") {
       var svg = plotSVG();
@@ -514,6 +550,7 @@
         : '<div class="note warn">Two complete rows are needed before a line can be drawn.</div>';
     }
     if (L[step].id === "report") el("reportHost").innerHTML = root.ReportDoc.html(blocks());
+    if (root.BenchTools) root.BenchTools.refresh();
     root.scrollTo({ top: 0 });
     save();
   }
@@ -548,6 +585,8 @@
       }
       var a = ev.target.closest("[data-act]");
       if (!a) return;
+      if (a.dataset.act === "showRef") { if (root.BenchTools) root.BenchTools.open("ref"); return; }
+      if (a.dataset.act === "showCalc") { if (root.BenchTools) root.BenchTools.open("calc"); return; }
       if (a.dataset.act === "print") root.print();
       if (a.dataset.act === "pdf") buildPDF(el("submitMsg"));
       if (a.dataset.act === "submit") submit();
@@ -612,13 +651,12 @@
   }
 
   function finish() {
-    var reg = S.student.register;
     try {
       localStorage.removeItem(key());
       localStorage.removeItem("vlab.last." + spec.id);
     } catch (e) {}
     S = blankState();
-    submitted = reg;
+    submitted = true;
     step = 0;
     render();
   }
@@ -638,6 +676,7 @@
     var last = null;
     try { last = localStorage.getItem("vlab.last." + spec.id); } catch (e) {}
     if (last) load(last);
+    if (root.BenchTools) root.BenchTools.init({ reference: referenceHTML });
     if (root.VirtualLab) {
       root.VirtualLab.masthead(el("masthead"));
       root.VirtualLab.applyMeta(function (changed) {

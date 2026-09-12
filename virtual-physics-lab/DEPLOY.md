@@ -41,6 +41,9 @@ is a `.js` file rather than JSON precisely so that it does.
 
 ## 2. One backend for every experiment
 
+*The short version is below; [BACKEND.md](BACKEND.md) covers the same ground in full, with the
+settings, the verification ladder and what to do when it will not connect.*
+
 1. Create a Google Sheet, named something like *Virtual lab submissions*.
 2. **Extensions → Apps Script**, delete the sample code and paste `apps-script/Code.gs`.
 3. At the top of the file:
